@@ -1,6 +1,6 @@
 {pkgs, stdenv, crate2nix-tools}: let
   cargo = pkgs.callPackage (crate2nix-tools.generatedCargoNix {
-    name = "swranalyzer";
+    name = "swr-analyzer";
     src = ./.;
   }) {
     defaultCrateOverrides = pkgs.defaultCrateOverrides // {
@@ -28,7 +28,7 @@
         nativeBuildInputs = [ pkgs.pkg-config ];
         buildInputs = [ pkgs.gtk3.dev ];
       };
-      swranalyzer = attrs: {
+      swr-analyzer = attrs: {
         nativeBuildInputs = [ pkgs.pkg-config ];
         buildInputs = [ pkgs.zlib.dev ];
       };
