@@ -3,5 +3,30 @@
 version = 3
 
 [[package]]
+name = "hidraw-sys"
+version = "0.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eed6ba9e9b379314e62a1f90450a3b3caf9bbb49d300efde90f4f3c681477529"
+dependencies = [
+ "ioctl-macro",
+]
+
+[[package]]
+name = "ioctl-macro"
+version = "0.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cdec1ce449a021ee01e0130978324dd6015c3ea63f6e1371883b43fbba527d21"
+
+[[package]]
+name = "libc"
+version = "0.2.153"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c198f91728a82281a64e1f4f9eeb25d82cb32a5de251c6bd1b5154d63a8e7bd"
+
+[[package]]
 name = "swranalyzer"
 version = "0.1.0"
+dependencies = [
+ "hidraw-sys",
+ "libc",
+]

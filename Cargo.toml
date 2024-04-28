@@ -6,3 +6,5 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+hidraw-sys = { version = "0.0.6", features = ["wrappers"] }
+libc = "0.2.153"
