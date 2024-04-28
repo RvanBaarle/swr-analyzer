@@ -22,7 +22,6 @@ impl log::Log for Logger {
             record.level(),
             record.args().to_string()
         )) {
-            eprintln!("{} - [LOGGERERROR] Error logging error: {}", chrono::Local::now(), e);
             eprintln!("{} - [{}] {}", chrono::Local::now(), record.level(), record.args())
         }
     }

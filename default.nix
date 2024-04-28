@@ -8,6 +8,30 @@
         nativeBuildInputs = [ pkgs.pkg-config ];
         buildInputs = [ pkgs.libusb.dev ];
       };
+      yeslogic-fontconfig-sys = attrs: {
+        nativeBuildInputs = [ pkgs.pkg-config ];
+        buildInputs = [ pkgs.fontconfig.dev ];
+      };
+      gobject-sys = attrs: {
+        nativeBuildInputs = [ pkgs.pkg-config ];
+        buildInputs = [ pkgs.gtk3.dev ];
+      };
+      gio-sys = attrs: {
+        nativeBuildInputs = [ pkgs.pkg-config ];
+        buildInputs = [ pkgs.gtk3.dev ];
+      };
+      gdk-pixbuf-sys = attrs: {
+        nativeBuildInputs = [ pkgs.pkg-config ];
+        buildInputs = [ pkgs.gtk3.dev ];
+      };
+      gdk-sys = attrs: {
+        nativeBuildInputs = [ pkgs.pkg-config ];
+        buildInputs = [ pkgs.gtk3.dev ];
+      };
+      swranalyzer = attrs: {
+        nativeBuildInputs = [ pkgs.pkg-config ];
+        buildInputs = [ pkgs.zlib.dev ];
+      };
     };
   };
 in

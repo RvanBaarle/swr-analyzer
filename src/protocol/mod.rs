@@ -19,14 +19,13 @@ pub trait SWRAnalyzer {
                   max_step_count: i32,
                   step_millis: i32) -> Result<()>;
     fn set_led_blink(&mut self, state: LedState) -> Result<()>;
-    fn start_oneshot<F>(&mut self,
+    fn start_oneshot(&mut self,
                         noise_filter: i32,
                         start_frequency: i32,
                         step_frequency: i32,
                         max_step_count: i32,
                         step_millis: i32,
-                        f: F) -> Result<()>
-        where F: FnMut(i32, i32, i32);
+                        f: &mut dyn FnMut(i32, i32, i32)) -> Result<()>;
 }
 
 pub trait SerialDevice: Read + Write {
@@ -128,14 +127,14 @@ impl<T: SerialDevice> SWRAnalyzer for T {
         Ok(())
     }
 
-    fn start_oneshot<F>(&mut self,
-                        noise_filter: i32,
-                        start_frequency: i32,
-                        step_frequency: i32,
-                        max_step_count: i32,
-                        step_millis: i32,
-                        mut f: F) -> Result<()>
-        where F: FnMut(i32, i32, i32) {
+    fn start_oneshot(&mut self,
+                     noise_filter: i32,
+                     start_frequency: i32,
+                     step_frequency: i32,
+                     max_step_count: i32,
+                     step_millis: i32,
+                     f: &mut dyn FnMut(i32, i32, i32)) -> Result<()> {
+        self.set_led_blink(LedState::Blink)?;
         self.set_params(noise_filter,
                         start_frequency,
                         step_frequency,
@@ -152,6 +151,8 @@ impl<T: SerialDevice> SWRAnalyzer for T {
             
             thread::sleep(Duration::from_millis((step_millis / 2) as u64));
         }
+        self.send_cmd(CommandOp::SweepDisable)?;
+        self.set_led_blink(LedState::Off)?;
         Ok(())
     }
 }
