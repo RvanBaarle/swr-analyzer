@@ -1,7 +1,9 @@
 use std::io::{Read, Write};
+use std::thread;
+use std::time::Duration;
 
 use error::{Result, Error};
-use log::info;
+use log::{debug, error, info, warn};
 use crate::protocol::commands::CommandOp;
 
 pub mod libusb;
@@ -10,9 +12,21 @@ mod commands;
 
 pub trait SWRAnalyzer {
     fn version(&mut self) -> Result<String>;
-    fn set_params(&mut self, noise_filter: u32, start_frequency: u32, stop_frequency: u32, step_time: u32) -> Result<()>;
+    fn set_params(&mut self,
+                  noise_filter: i32,
+                  start_frequency: i32,
+                  step_frequency: i32,
+                  max_step_count: i32,
+                  step_millis: i32) -> Result<()>;
     fn set_led_blink(&mut self, state: LedState) -> Result<()>;
-    fn start_rx(&mut self, step_time: u32) -> Result<()>;
+    fn start_oneshot<F>(&mut self,
+                        noise_filter: i32,
+                        start_frequency: i32,
+                        step_frequency: i32,
+                        max_step_count: i32,
+                        step_millis: i32,
+                        f: F) -> Result<()>
+        where F: FnMut(i32, i32, i32);
 }
 
 pub trait SerialDevice: Read + Write {
@@ -46,19 +60,36 @@ pub trait SerialDevice: Read + Write {
 
     fn send_cmd_param(&mut self, cmd: CommandOp, param: i32) -> Result<()> {
         if param > 999999999 || param < -99999999 || cmd as u16 > 99 {
-            return Err(Error::OutOfRange)
+            return Err(Error::OutOfRange);
         }
         let mut buff = [0; 32];
         write!(&mut buff[..], ":{:02}{:09}\r", cmd as u16, param).unwrap();
         self.write(&buff)?;
         Ok(())
     }
+    
+    fn recv_sample(&mut self) -> Result<[u8; 32]> {
+        let mut buffer = [0; 32];
+        self.read(&mut buffer)?;
+        let mut send_buff = [0; 32];
+        write!(&mut send_buff[..], ":\r").unwrap();
+        self.write(&send_buff)?;
+        Ok(buffer)
+    }
 }
 
 impl<T: Read + Write> SerialDevice for T {}
 
-impl dyn SerialDevice {
-    
+fn decode_sample(sample: [u8; 32]) -> Result<Vec<u16>> {
+    if sample[0] != ':' as u8 || sample[1] > 7  || sample[10] != '\r' as u8 {
+        error!("Invalid sample {:?}", sample);
+        return Err(Error::InvalidResponse)
+    }
+    let count = u16::from_le_bytes([sample[2], sample[3]]) as usize;
+    let parts: Vec<u16> = sample[4..].chunks_exact(2).take(count).map(|x| {
+        u16::from_le_bytes([x[0], x[1]])
+    }).collect();
+    Ok(parts)
 }
 
 impl<T: SerialDevice> SWRAnalyzer for T {
@@ -74,8 +105,19 @@ impl<T: SerialDevice> SWRAnalyzer for T {
         }
     }
 
-    fn set_params(&mut self, noise_filter: u32, start_frequency: u32, stop_frequency: u32, step_time: u32) -> Result<()> {
-        todo!()
+    fn set_params(&mut self,
+                  noise_filter: i32,
+                  start_frequency: i32,
+                  step_frequency: i32,
+                  step_count: i32,
+                  step_millis: i32) -> Result<()> {
+        self.send_cmd_param(CommandOp::NoiseFilter, noise_filter)?;
+        self.send_cmd_param(CommandOp::SetRFGen, 0)?;
+        self.send_cmd_param(CommandOp::StartFrequency, start_frequency)?;
+        self.send_cmd_param(CommandOp::StepFrequency, step_frequency)?;
+        self.send_cmd_param(CommandOp::StepCount, step_count)?;
+        self.send_cmd_param(CommandOp::StepTimeMillis, step_millis)?;
+        Ok(())
     }
 
     fn set_led_blink(&mut self, state: LedState) -> Result<()> {
@@ -86,11 +128,35 @@ impl<T: SerialDevice> SWRAnalyzer for T {
         Ok(())
     }
 
-    fn start_rx(&mut self, step_time: u32) -> Result<()> {
-        todo!()
+    fn start_oneshot<F>(&mut self,
+                        noise_filter: i32,
+                        start_frequency: i32,
+                        step_frequency: i32,
+                        max_step_count: i32,
+                        step_millis: i32,
+                        mut f: F) -> Result<()>
+        where F: FnMut(i32, i32, i32) {
+        self.set_params(noise_filter,
+                        start_frequency,
+                        step_frequency,
+                        max_step_count,
+                        step_millis)?;
+        self.send_cmd(CommandOp::SweepOneshot)?;
+        loop {
+            let sample = decode_sample(self.recv_sample()?)?;
+            if sample.is_empty() {
+                break;
+            }
+            let cur_freq= start_frequency + step_frequency * sample[0] as i32;
+            f(sample[0] as i32, cur_freq, sample[1] as i32);
+            
+            thread::sleep(Duration::from_millis((step_millis / 2) as u64));
+        }
+        Ok(())
     }
 }
 
 pub enum LedState {
-    Off, Blink
+    Off,
+    Blink,
 }
