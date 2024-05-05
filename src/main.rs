@@ -1,10 +1,3 @@
-use std::sync::Arc;
-use std::thread;
-use std::time::{Duration, Instant};
-use log::{debug, info, Metadata, Record};
-use crate::protocol::libusb::SerialHID;
-
-use crate::protocol::SWRAnalyzer;
 use crate::ui::ui_main;
 
 mod protocol;

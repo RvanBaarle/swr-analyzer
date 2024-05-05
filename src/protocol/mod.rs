@@ -3,7 +3,7 @@ use std::thread;
 use std::time::Duration;
 
 use error::{Result, Error};
-use log::{debug, error, info, warn};
+use log::{error, info};
 use crate::protocol::commands::CommandOp;
 
 pub mod libusb;
@@ -33,9 +33,9 @@ pub trait SerialDevice: Read + Write {
         let mut buff = [0; 32];
         write!(&mut buff[..], ":{:02}\r", cmd as u16).unwrap();
         for i in 0..3 {
-            self.write(&buff)?;
+            self.write_all(&buff)?;
             let mut resp = [0; 32];
-            self.read(&mut resp)?;
+            self.read_exact(&mut resp)?;
             if std::str::from_utf8(&resp)?.starts_with(":ACK ") {
                 return Ok(());
             }
@@ -44,35 +44,36 @@ pub trait SerialDevice: Read + Write {
         Err(Error::InvalidResponse)
     }
 
-    fn send_and_receive(&mut self, msg: &[u8], recv_buffer: &mut [u8]) -> Result<()> {
-        self.write(msg)?;
-        self.read(recv_buffer)?;
-        Ok(())
+    fn send_and_receive(&mut self, msg: &[u8]) -> Result<[u8; 32]> {
+        self.write_all(msg)?;
+        let mut recv_buffer = [0; 32];
+        self.read_exact(&mut recv_buffer)?;
+        Ok(recv_buffer)
     }
 
     fn send_cmd(&mut self, cmd: CommandOp) -> Result<()> {
         let mut buff = [0; 32];
         write!(&mut buff[..], ":{:02}\r", cmd as u16).unwrap();
-        self.write(&buff)?;
+        self.write_all(&buff)?;
         Ok(())
     }
 
     fn send_cmd_param(&mut self, cmd: CommandOp, param: i32) -> Result<()> {
-        if param > 999999999 || param < -99999999 || cmd as u16 > 99 {
+        if !(-99999999..=999999999).contains(&param) || cmd as u16 > 99 {
             return Err(Error::OutOfRange);
         }
         let mut buff = [0; 32];
         write!(&mut buff[..], ":{:02}{:09}\r", cmd as u16, param).unwrap();
-        self.write(&buff)?;
+        self.write_all(&buff)?;
         Ok(())
     }
     
     fn recv_sample(&mut self) -> Result<[u8; 32]> {
         let mut buffer = [0; 32];
-        self.read(&mut buffer)?;
+        self.read_exact(&mut buffer)?;
         let mut send_buff = [0; 32];
         write!(&mut send_buff[..], ":\r").unwrap();
-        self.write(&send_buff)?;
+        self.write_all(&send_buff)?;
         Ok(buffer)
     }
 }
@@ -80,7 +81,7 @@ pub trait SerialDevice: Read + Write {
 impl<T: Read + Write> SerialDevice for T {}
 
 fn decode_sample(sample: [u8; 32]) -> Result<Vec<u16>> {
-    if sample[0] != ':' as u8 || sample[1] > 7  || sample[10] != '\r' as u8 {
+    if sample[0] != b':' || sample[1] > 7  || sample[10] != b'\r' {
         error!("Invalid sample {:?}", sample);
         return Err(Error::InvalidResponse)
     }
@@ -93,8 +94,7 @@ fn decode_sample(sample: [u8; 32]) -> Result<Vec<u16>> {
 
 impl<T: SerialDevice> SWRAnalyzer for T {
     fn version(&mut self) -> Result<String> {
-        let mut buffer = [0; 32];
-        self.send_and_receive(":99\r".as_bytes(), &mut buffer)?;
+        let buffer = self.send_and_receive(":99\r".as_bytes())?;
         let mut res = std::str::from_utf8(&buffer)?;
         res = res.trim_end_matches('\0');
         if res.starts_with(":99") && res.ends_with('\r') {

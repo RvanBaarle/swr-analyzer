@@ -1,13 +1,12 @@
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::default::Default;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::sync::mpsc::{channel, TryRecvError};
 use std::thread;
 
-use ::log::{debug, error, info, warn};
-use gtk::{Application, ApplicationWindow, Button, cairo, DrawingArea, Entry, glib, Label, TreeView, Window};
-use gtk::gio::ApplicationFlags;
+use ::log::{debug, error, info};
+use gtk::{Application, ApplicationWindow, Button, cairo, DrawingArea, Entry, glib, TreeView, Window};
 use gtk::glib::{clone, ControlFlow, Propagation};
 use gtk::prelude::*;
 use plotters::prelude::*;
@@ -19,32 +18,6 @@ use crate::protocol::SWRAnalyzer;
 use crate::ui::log::Logger;
 
 mod log;
-
-pub fn test_graph(drawing_area: &gtk::cairo::Context, (w, h): (u32, u32)) {
-    let root = CairoBackend::new(drawing_area, (w, h)).unwrap().into_drawing_area();
-    root.fill(&WHITE).unwrap();
-
-    let mut chart = ChartBuilder::on(&root)
-        .caption("Test", ("sans-serif", 30).into_font())
-        .margin(5)
-        .x_label_area_size(40)
-        .y_label_area_size(50)
-        .build_cartesian_2d(1000000f32..35000000f32, 0f32..1024f32).unwrap();
-
-    chart.configure_mesh()
-        .x_desc("Frequency [MHz]")
-        .x_label_formatter(&|x| format!("{:.2}", x / 1000000.0))
-        .y_desc("Voltage [dB]")
-        .draw().unwrap();
-
-    chart
-        .draw_series(LineSeries::new(
-            (1000000..=35000000).step_by(100).map(|x| (x as f32, x as f32 / 35000000.0)).map(|(x, y)| (x, y * y)),
-            &RED,
-        )).unwrap();
-
-    root.present().unwrap();
-}
 
 struct GraphData {
     start_freq: f32,
@@ -144,7 +117,7 @@ pub fn ui_main() {
         let input_step_count: Entry = builder.object("input_step_count").unwrap();
         let input_step_time: Entry = builder.object("input_step_time").unwrap();
 
-        button_oneshot.connect_clicked(clone!(@strong graph_data, @weak drawing_area => move |button| {
+        button_oneshot.connect_clicked(clone!(@strong graph_data, @weak drawing_area => move |_| {
             let mut graph_data_locked = graph_data.borrow_mut();
             let Ok(start_freq) = input_start_freq.text().parse::<i32>() else {
                 error!("Invalid start frequency");
@@ -214,16 +187,22 @@ pub fn ui_main() {
             debug!("{:?}", graph_data.borrow().samples);
         }));
         
-        log_win.connect_delete_event(|log_win, ev| {
+        log_win.connect_delete_event(clone!(@strong button_show_logs => move |log_win, _| {
             log_win.set_visible(false);
+            button_show_logs.set_label("Open log window");
             Propagation::Stop
-        });
+        }));
         button_show_logs.connect_clicked(clone!(@strong log_win => move |button| {
-            log_win.set_visible(true);
+            if log_win.get_visible() {
+                log_win.set_visible(false);
+                button.set_label("Open log window");
+            } else {
+                log_win.set_visible(true);
+                button.set_label("Close log window");
+            }
         }));
 
         win.show_all();
-        log_win.show_all();
     });
 
     app.run();

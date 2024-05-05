@@ -172,17 +172,22 @@
             <child>
               <object class="GtkButton" id="button_stop">
                 <property name="label" translatable="yes">Stop</property>
-                <property name="visible">True</property>
                 <property name="sensitive">False</property>
                 <property name="can-focus">True</property>
                 <property name="receives-default">True</property>
                 <property name="no-show-all">True</property>
               </object>
               <packing>
-                <property name="left-attach">0</property>
+                <property name="left-attach">1</property>
                 <property name="top-attach">5</property>
                 <property name="height">2</property>
               </packing>
+            </child>
+            <child>
+              <placeholder/>
+            </child>
+            <child>
+              <placeholder/>
             </child>
             <child>
               <placeholder/>
@@ -195,7 +200,7 @@
         </child>
         <child>
           <object class="GtkButton" id="button_show_logs">
-            <property name="label" translatable="yes">Show logs</property>
+            <property name="label" translatable="yes">Open log window</property>
             <property name="visible">True</property>
             <property name="can-focus">True</property>
             <property name="receives-default">True</property>
@@ -226,6 +231,9 @@
           <object class="GtkTreeView" id="list_log">
             <property name="visible">True</property>
             <property name="can-focus">True</property>
+            <child internal-child="selection">
+              <object class="GtkTreeSelection"/>
+            </child>
             <child>
               <object class="GtkTreeViewColumn">
                 <property name="title" translatable="yes">Time</property>
@@ -234,6 +242,7 @@
                 <child>
                   <object class="GtkCellRendererText" id="time"/>
                   <attributes>
+                    <attribute name="foreground">3</attribute>
                     <attribute name="text">0</attribute>
                   </attributes>
                 </child>
@@ -247,6 +256,7 @@
                 <child>
                   <object class="GtkCellRendererText" id="severity"/>
                   <attributes>
+                    <attribute name="foreground">3</attribute>
                     <attribute name="text">1</attribute>
                   </attributes>
                 </child>
@@ -260,6 +270,7 @@
                 <child>
                   <object class="GtkCellRendererText" id="description"/>
                   <attributes>
+                    <attribute name="foreground">3</attribute>
                     <attribute name="text">2</attribute>
                   </attributes>
                 </child>
