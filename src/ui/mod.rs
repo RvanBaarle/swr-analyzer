@@ -11,8 +11,10 @@ use gtk::glib::{clone, ControlFlow, Propagation};
 use gtk::prelude::*;
 use plotters::prelude::*;
 use plotters_cairo::CairoBackend;
+use crate::protocol::dummy::Dummy;
 
 use crate::protocol::error::Result;
+use crate::protocol::foxdelta::FoxDeltaAnalyzer;
 use crate::protocol::libusb::SerialHID;
 use crate::protocol::SWRAnalyzer;
 use crate::ui::log::Logger;
@@ -53,11 +55,15 @@ fn draw_graph(context: &cairo::Context, area: (u32, u32), data: &GraphData) {
     root.present().unwrap();
 }
 
-fn get_analyzer() -> Result<Box<dyn SWRAnalyzer + Send>> {
-    let context = libusb::Context::new()?;
-    let mut dev = SerialHID::new(Arc::new(context))?;
-    info!("version: {}", dev.version()?);
-    Ok(Box::new(dev))
+fn get_analyzer(use_dummy: bool) -> Result<Box<dyn SWRAnalyzer + Send>> {
+    let mut device: Box<dyn SWRAnalyzer + Send> = if use_dummy {
+        Box::new(Dummy)
+    } else {
+        let context = libusb::Context::new()?;
+        Box::new(FoxDeltaAnalyzer::from(SerialHID::new(Arc::new(context))?))
+    };
+    info!("version: {}", device.version()?);
+    Ok(device)
 }
 
 enum DataSample {
@@ -80,7 +86,7 @@ pub fn ui_main() {
 
         let analyzer: Rc<RefCell<Option<Box<dyn SWRAnalyzer + Send>>>> = Default::default();
 
-        match get_analyzer() {
+        match get_analyzer(true) {
             Ok(dev) => {
                 *analyzer.borrow_mut() = Some(dev);
             }

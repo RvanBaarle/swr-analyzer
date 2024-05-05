@@ -4,9 +4,9 @@ use std::time::Duration;
 
 use libusb::{Context, DeviceHandle};
 
-use crate::protocol::error::{Error, Result};
-use crate::protocol::{LedState, SerialDevice, SWRAnalyzer};
 use crate::protocol::commands::CommandOp;
+use crate::protocol::error::{Error, Result};
+use crate::protocol::foxdelta::SerialDevice;
 
 const TIMEOUT: Duration = Duration::from_millis(2000);
 
@@ -43,11 +43,10 @@ impl SerialHID {
             handle.detach_kernel_driver(0x0)?;
         }
         handle.claim_interface(0x0)?;
-        let mut this = Self {
+        let this = Self {
             _context: context,
             handle: Some(handle)
         };
-        this.set_led_blink(LedState::Off)?;
         Ok(this)
     }
 }

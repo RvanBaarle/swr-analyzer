@@ -82,7 +82,7 @@
               <object class="GtkEntry" id="input_step_count">
                 <property name="visible">True</property>
                 <property name="can-focus">True</property>
-                <property name="text" translatable="yes">10</property>
+                <property name="text" translatable="yes">100</property>
                 <property name="input-purpose">number</property>
               </object>
               <packing>
