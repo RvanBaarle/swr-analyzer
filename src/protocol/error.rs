@@ -18,10 +18,10 @@ pub enum Error {
     OutOfRange,
     #[error("An operation is currently running")]
     Busy,
-    #[error("Operation can't be completed due to a previous panic")]
-    PreviousError,
+    #[error("Operation can't be completed due to a previous error")]
+    Previous,
     #[error("thread panic: {0:?}")]
-    ThreadError(Box<dyn Any + Send>)
+    Thread(Box<dyn Any + Send>)
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

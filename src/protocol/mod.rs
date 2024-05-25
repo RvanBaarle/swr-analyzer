@@ -69,7 +69,7 @@ impl<D: DerefMut + Send + 'static> AsyncSWRAnalyzer<D> where D::Target: SWRAnaly
             }
             AnalyzerState::Err => {
                 self.analyzer = AnalyzerState::Err;
-                return Err(error::Error::PreviousError);
+                return Err(error::Error::Previous);
             }
         };
         match spawn_blocking(move || {
@@ -82,7 +82,7 @@ impl<D: DerefMut + Send + 'static> AsyncSWRAnalyzer<D> where D::Target: SWRAnaly
             }
             Err(e) => {
                 self.analyzer = AnalyzerState::Err;
-                Err(error::Error::ThreadError(e))
+                Err(error::Error::Thread(e))
             }
         }
     }
@@ -109,10 +109,7 @@ impl<D: DerefMut + Send + 'static> AsyncSWRAnalyzer<D> where D::Target: SWRAnaly
                                step_frequency,
                                max_step_count,
                                step_millis, &mut move |i, freq, sample| {
-                    match send.send_blocking((i, freq, sample)) {
-                        Ok(_) => true,
-                        Err(_) => false,
-                    }
+                    send.send_blocking((i, freq, sample)).is_ok()
                 })
         }).and_then(|x| async { x });
 
@@ -137,10 +134,7 @@ impl<D: DerefMut + Send + 'static> AsyncSWRAnalyzer<D> where D::Target: SWRAnaly
                                step_frequency,
                                max_step_count,
                                step_millis, &mut move |i, freq, sample| {
-                    match send.send_blocking((i, freq, sample)) {
-                        Ok(_) => true,
-                        Err(_) => false,
-                    }
+                    send.send_blocking((i, freq, sample)).is_ok()
                 })
         }).and_then(|x| async { x });
 
@@ -176,7 +170,7 @@ impl Stream for ScanStream<'_> {
                 _ => {}
             }
         }
-        pinned.recv.as_mut().poll_next(cx).map(|x| x.map(|x| Ok(x)))
+        pinned.recv.as_mut().poll_next(cx).map(|x| x.map(Ok))
     }
 }
 
