@@ -1,11 +1,11 @@
 use std::io::{Read, Write};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use log::{info, warn};
 use std::thread;
 use std::time::Duration;
-use crate::protocol::commands::CommandOp;
+
+use log::info;
+
 use crate::protocol::{error, LedState, SWRAnalyzer};
+use crate::protocol::commands::CommandOp;
 use crate::protocol::error::Error;
 
 pub trait SerialDevice: Read + Write {
@@ -149,5 +149,9 @@ impl<T: SerialDevice> SWRAnalyzer for FoxDeltaAnalyzer<T> {
         self.serial_device.send_cmd(CommandOp::SweepDisable)?;
         self.set_led_blink(LedState::Off)?;
         Ok(())
+    }
+
+    fn start_continuous(&mut self, _noise_filter: i32, _start_frequency: i32, _step_frequency: i32, _max_step_count: i32, _step_millis: i32, _f: &mut dyn FnMut(i32, i32, i32) -> bool) -> error::Result<()> {
+        unimplemented!()
     }
 }

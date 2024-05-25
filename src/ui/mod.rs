@@ -1,25 +1,22 @@
-use std::cell::{Cell, RefCell, RefMut};
+use std::cell::RefCell;
 use std::default::Default;
 use std::pin::pin;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
-use std::sync::mpsc::{channel, TryRecvError};
-use std::thread;
 
-use ::log::{debug, error, info};
-use futures::{select, StreamExt, FutureExt};
+use ::log::{error, info};
+use futures::{FutureExt, select, StreamExt};
 use gtk::{Application, ApplicationWindow, Button, cairo, DrawingArea, Entry, glib, TreeView, Window};
-use gtk::glib::{clone, ControlFlow, Propagation};
+use gtk::glib::{clone, Propagation};
 use gtk::prelude::*;
 use plotters::prelude::*;
 use plotters_cairo::CairoBackend;
-use crate::protocol::dummy::Dummy;
 
+use crate::protocol::{AsyncSWRAnalyzer, SWRAnalyzer};
+use crate::protocol::dummy::Dummy;
 use crate::protocol::error::Result;
 use crate::protocol::foxdelta::FoxDeltaAnalyzer;
 use crate::protocol::libusb::SerialHID;
-use crate::protocol::{AsyncSWRAnalyzer, SWRAnalyzer};
 use crate::ui::log::Logger;
 
 mod log;
@@ -124,9 +121,11 @@ pub fn ui_main() {
         let input_step_count: Entry = builder.object("input_step_count").unwrap();
         let input_step_time: Entry = builder.object("input_step_time").unwrap();
 
-        button_oneshot.connect_clicked(clone!(@strong graph_data, @weak drawing_area,
+        let scan_closure = |continuous: bool| clone!(
+            @strong graph_data, @weak drawing_area, @strong analyzer,
+            @weak input_start_freq, @weak input_stop_freq, @weak input_step_count, @weak input_step_time,
             @weak button_stop, @weak button_sweep, @weak button_oneshot
-            => move |_| {
+            => move |_: &Button| {
             button_sweep.set_sensitive(false);
             button_oneshot.set_sensitive(false);
             button_stop.set_sensitive(true);
@@ -153,7 +152,7 @@ pub fn ui_main() {
             graph_data_locked.start_freq = start_freq as f32;
             graph_data_locked.stop_freq = stop_freq as f32;
             graph_data_locked.samples.clear();
-            
+
             drawing_area.queue_draw();
 
             glib::spawn_future_local(clone!(@strong graph_data, @strong analyzer,
@@ -168,12 +167,16 @@ pub fn ui_main() {
                     return;
                 };
 
-                let mut iter = pin!(analyzer.start_oneshot(600, start_freq, step_freq, step_count, step_time));
+                let iter = pin!(if continuous {
+                    analyzer.start_continuous(600, start_freq, step_freq, step_count, step_time)
+                } else {
+                    analyzer.start_oneshot(600, start_freq, step_freq, step_count, step_time)
+                });
                 let mut iter = iter.fuse();
                 let (cancel_trigger, cancel) = async_oneshot::oneshot();
                 let cancel_trigger = RefCell::new(cancel_trigger);
                 let mut cancel = cancel.fuse();
-                        
+
                 button_stop.connect_clicked(clone!(
                     @weak button_stop, @weak button_sweep, @weak button_oneshot
                 =>move |_| {
@@ -198,9 +201,9 @@ pub fn ui_main() {
                             let i = i as usize;
                             if graph_data.samples.len() <= i {
                                 graph_data.samples.resize(i + 1, (0.0, 0.0));
-                                graph_data.samples[i] = (freq as f32, sample as f32);
-                                drawing_area.queue_draw();
                             }
+                            graph_data.samples[i] = (freq as f32, sample as f32);
+                            drawing_area.queue_draw();
                         }
                         Err(e) => {
                             error!("Sweep error: {}", e);
@@ -218,11 +221,11 @@ pub fn ui_main() {
                 button_stop.set_sensitive(false);
                 button_stop.connect_clicked(|_|{});
             }));
-        }));
+        });
 
-        button_sweep.connect_clicked(clone!(@strong graph_data => move |_| {
-            debug!("{:?}", graph_data.borrow().samples);
-        }));
+        button_oneshot.connect_clicked(scan_closure(false));
+
+        button_sweep.connect_clicked(scan_closure(true));
 
         log_win.connect_delete_event(clone!(@strong button_show_logs => move |log_win, _| {
             log_win.set_visible(false);

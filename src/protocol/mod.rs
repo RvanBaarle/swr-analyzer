@@ -1,17 +1,13 @@
-use std::error::Error;
-use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
-use std::{mem, thread};
 use std::convert::identity;
 use std::future::Future;
+use std::mem;
 use std::ops::DerefMut;
 use std::pin::{Pin, pin};
-use std::sync::mpsc::{channel, SendError};
 use std::task::{Context, Poll};
+
 use async_channel::Receiver;
 use futures::{FutureExt, Stream, TryFutureExt};
 use gtk::gio::spawn_blocking;
-use gtk::glib;
 use log::error;
 use pin_project::{pin_project, pinned_drop};
 
@@ -33,6 +29,13 @@ pub trait SWRAnalyzer {
                      max_step_count: i32,
                      step_millis: i32,
                      f: &mut dyn FnMut(i32, i32, i32) -> bool) -> Result<()>;
+    fn start_continuous(&mut self,
+                        noise_filter: i32,
+                        start_frequency: i32,
+                        step_frequency: i32,
+                        max_step_count: i32,
+                        step_millis: i32,
+                        f: &mut dyn FnMut(i32, i32, i32) -> bool) -> Result<()>;
 }
 
 #[derive(Debug)]
@@ -49,11 +52,6 @@ enum AnalyzerState<D> {
 
 pub struct AsyncSWRAnalyzer<D> {
     analyzer: AnalyzerState<D>,
-}
-
-enum DataSample<T> {
-    Sample(i32, i32, i32),
-    Done(T),
 }
 
 impl<D: DerefMut + Send + 'static> AsyncSWRAnalyzer<D> where D::Target: SWRAnalyzer {
@@ -97,12 +95,12 @@ impl<D: DerefMut + Send + 'static> AsyncSWRAnalyzer<D> where D::Target: SWRAnaly
         self.run_blocking(|this| this.set_led_blink(state)).await.and_then(identity)
     }
 
-    pub fn start_oneshot<'a>(&'a mut self,
-                             noise_filter: i32,
-                             start_frequency: i32,
-                             step_frequency: i32,
-                             max_step_count: i32,
-                             step_millis: i32) -> ScanStream<impl Future<Output=Result<()>> + 'a> {
+    pub fn start_oneshot(&mut self,
+                         noise_filter: i32,
+                         start_frequency: i32,
+                         step_frequency: i32,
+                         max_step_count: i32,
+                         step_millis: i32) -> ScanStream {
         let (send, recv) = async_channel::unbounded();
 
         let task = self.run_blocking(move |this| {
@@ -120,26 +118,54 @@ impl<D: DerefMut + Send + 'static> AsyncSWRAnalyzer<D> where D::Target: SWRAnaly
 
         ScanStream {
             task_done: false,
-            task,
+            task: Box::pin(task),
+            recv,
+        }
+    }
+
+    pub fn start_continuous(&mut self,
+                            noise_filter: i32,
+                            start_frequency: i32,
+                            step_frequency: i32,
+                            max_step_count: i32,
+                            step_millis: i32) -> ScanStream {
+        let (send, recv) = async_channel::unbounded();
+
+        let task = self.run_blocking(move |this| {
+            this.start_continuous(noise_filter,
+                               start_frequency,
+                               step_frequency,
+                               max_step_count,
+                               step_millis, &mut move |i, freq, sample| {
+                    match send.send_blocking((i, freq, sample)) {
+                        Ok(_) => true,
+                        Err(_) => false,
+                    }
+                })
+        }).and_then(|x| async { x });
+
+        ScanStream {
+            task_done: false,
+            task: Box::pin(task),
             recv,
         }
     }
 }
 
 #[pin_project(PinnedDrop)]
-pub struct ScanStream<T: Future<Output=Result<()>>> {
-    task_done: bool,
-    #[pin] task: T,
+pub struct ScanStream<'a> {
+    task_done: bool, 
+    task: Pin<Box<dyn Future<Output=Result<()>> + 'a>>,
     #[pin] recv: Receiver<(i32, i32, i32)>,
 }
 
-impl<T: Future<Output=Result<()>>> Stream for ScanStream<T> {
+impl Stream for ScanStream<'_> {
     type Item = Result<(i32, i32, i32)>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut pinned = self.project();
         if !*pinned.task_done {
-            match pinned.task.poll(cx) {
+            match pinned.task.poll_unpin(cx) {
                 Poll::Ready(Err(e)) => {
                     *pinned.task_done = true;
                     return Poll::Ready(Some(Err(e)));
@@ -155,7 +181,7 @@ impl<T: Future<Output=Result<()>>> Stream for ScanStream<T> {
 }
 
 #[pinned_drop]
-impl<T: Future<Output=Result<()>>> PinnedDrop for ScanStream<T> {
+impl PinnedDrop for ScanStream<'_> {
     fn drop(self: Pin<&mut Self>) {
         if !self.task_done {
             panic!("Dropped without finalizing")
@@ -163,12 +189,11 @@ impl<T: Future<Output=Result<()>>> PinnedDrop for ScanStream<T> {
     }
 }
 
-impl<T: Future<Output=Result<()>>> ScanStream<T> {
+impl ScanStream<'_> {
     pub async fn cancel(self: Pin<&mut Self>) -> Result<()> {
         self.recv.close();
         if !self.task_done {
             let this = self.project();
-            
             let result = this.task.await;
             *this.task_done = true;
             result
