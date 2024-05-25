@@ -1,11 +1,14 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell, RefMut};
 use std::default::Default;
+use std::pin::pin;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{channel, TryRecvError};
 use std::thread;
 
 use ::log::{debug, error, info};
+use futures::{select, StreamExt, FutureExt};
 use gtk::{Application, ApplicationWindow, Button, cairo, DrawingArea, Entry, glib, TreeView, Window};
 use gtk::glib::{clone, ControlFlow, Propagation};
 use gtk::prelude::*;
@@ -16,7 +19,7 @@ use crate::protocol::dummy::Dummy;
 use crate::protocol::error::Result;
 use crate::protocol::foxdelta::FoxDeltaAnalyzer;
 use crate::protocol::libusb::SerialHID;
-use crate::protocol::SWRAnalyzer;
+use crate::protocol::{AsyncSWRAnalyzer, SWRAnalyzer};
 use crate::ui::log::Logger;
 
 mod log;
@@ -55,7 +58,7 @@ fn draw_graph(context: &cairo::Context, area: (u32, u32), data: &GraphData) {
     root.present().unwrap();
 }
 
-fn get_analyzer(use_dummy: bool) -> Result<Box<dyn SWRAnalyzer + Send>> {
+fn get_analyzer(use_dummy: bool) -> Result<AsyncSWRAnalyzer<Box<dyn SWRAnalyzer + Send>>> {
     let mut device: Box<dyn SWRAnalyzer + Send> = if use_dummy {
         Box::new(Dummy)
     } else {
@@ -63,12 +66,7 @@ fn get_analyzer(use_dummy: bool) -> Result<Box<dyn SWRAnalyzer + Send>> {
         Box::new(FoxDeltaAnalyzer::from(SerialHID::new(Arc::new(context))?))
     };
     info!("version: {}", device.version()?);
-    Ok(device)
-}
-
-enum DataSample {
-    Sample(i32, i32, i32),
-    Done(Box<dyn SWRAnalyzer + Send>),
+    Ok(AsyncSWRAnalyzer::new(device))
 }
 
 pub fn ui_main() {
@@ -81,25 +79,28 @@ pub fn ui_main() {
     app.connect_activate(|app| {
         let builder = gtk::Builder::from_string(glade_src);
 
-        let list_log: TreeView = builder.object("list_log").unwrap();
-        Logger::init(list_log).expect("init logger");
-
-        let analyzer: Rc<RefCell<Option<Box<dyn SWRAnalyzer + Send>>>> = Default::default();
-
-        match get_analyzer(true) {
-            Ok(dev) => {
-                *analyzer.borrow_mut() = Some(dev);
-            }
-            Err(e) => {
-                error!("connection error: {}", e)
-            }
-        }
-
         let win: ApplicationWindow = builder.object("window_main").unwrap();
         win.set_application(Some(app));
         let log_win: Window = builder.object("window_log").unwrap();
 
+        let list_log: TreeView = builder.object("list_log").unwrap();
+        Logger::init(win.clone(), list_log).expect("init logger");
+
+        let analyzer: Rc<RefCell<Option<AsyncSWRAnalyzer<Box<dyn SWRAnalyzer + Send>>>>> = Default::default();
+
+        match get_analyzer(false) {
+            Ok(dev) => {
+                *analyzer.borrow_mut() = Some(dev);
+            }
+            Err(e) => {
+                error!("connection error: {}", e);
+                *analyzer.borrow_mut() = Some(get_analyzer(true).expect("infallible dummy"));
+            }
+        }
+
         let button_oneshot: Button = builder.object("button_oneshot").unwrap();
+        let button_sweep: Button = builder.object("button_sweep").unwrap();
+        let button_stop: Button = builder.object("button_stop").unwrap();
         let button_show_logs: Button = builder.object("button_show_logs").unwrap();
 
         let graph_data = Rc::new(RefCell::new(GraphData {
@@ -123,8 +124,14 @@ pub fn ui_main() {
         let input_step_count: Entry = builder.object("input_step_count").unwrap();
         let input_step_time: Entry = builder.object("input_step_time").unwrap();
 
-        button_oneshot.connect_clicked(clone!(@strong graph_data, @weak drawing_area => move |_| {
+        button_oneshot.connect_clicked(clone!(@strong graph_data, @weak drawing_area,
+            @weak button_stop, @weak button_sweep, @weak button_oneshot
+            => move |_| {
+            button_sweep.set_sensitive(false);
+            button_oneshot.set_sensitive(false);
+            button_stop.set_sensitive(true);
             let mut graph_data_locked = graph_data.borrow_mut();
+
             let Ok(start_freq) = input_start_freq.text().parse::<i32>() else {
                 error!("Invalid start frequency");
                 return;
@@ -141,58 +148,82 @@ pub fn ui_main() {
                 error!("Invalid step time");
                 return;
             };
-            let (send, recv) = channel();
-            let Some(mut analyzer_taken) = analyzer.borrow_mut().take() else {
-                error!("No analyzer"); return;
-            };
+
             let step_freq = (stop_freq - start_freq) / step_count + 1;
             graph_data_locked.start_freq = start_freq as f32;
             graph_data_locked.stop_freq = stop_freq as f32;
             graph_data_locked.samples.clear();
             
             drawing_area.queue_draw();
-            
-            thread::spawn(move || {
-                if let Err(e) = analyzer_taken.start_oneshot(600, start_freq, step_freq, step_count, step_time, &mut |i, freq, sample| {
-                    send.send(DataSample::Sample(i, freq, sample)).unwrap();
-                    debug!("{} - {}", freq, sample);
-                }) {
-                    error!("oneshot {}", e)
-                }
-                send.send(DataSample::Done(analyzer_taken))
-            });
-            glib::idle_add_local(clone!(@weak graph_data, @weak analyzer, @weak drawing_area => @default-return ControlFlow::Break, move || {
-                let mut graph_data = graph_data.borrow_mut();
-                match recv.try_recv() {
-                    Ok(DataSample::Sample(i, freq, sample)) => {
-                        let i = i as usize;
-                        if graph_data.samples.len() <= i {
-                            graph_data.samples.resize(i + 1, (0.0, 0.0));
-                        }
-                        graph_data.samples[i] = (freq as f32, sample as f32);
-                        drawing_area.queue_draw();
-                        ControlFlow::Continue
-                    },
-                    Ok(DataSample::Done(analyzer_new)) => {
-                        *analyzer.borrow_mut() = Some(analyzer_new);
-                        ControlFlow::Break
-                    }
-                    Err(TryRecvError::Empty) => {
-                        ControlFlow::Continue
-                    },
-                    Err(TryRecvError::Disconnected) => {
+
+            glib::spawn_future_local(clone!(@strong graph_data, @strong analyzer,
+                @weak button_stop, @weak button_sweep, @weak button_oneshot
+            => async move {
+                let Ok(mut analyzer) = analyzer.try_borrow_mut() else {
+                    error!("Analyzer busy");
+                    return;
+                };
+                let Some(analyzer) = analyzer.as_mut() else {
+                    error!("No analyzer connected");
+                    return;
+                };
+
+                let mut iter = pin!(analyzer.start_oneshot(600, start_freq, step_freq, step_count, step_time));
+                let mut iter = iter.fuse();
+                let (cancel_trigger, cancel) = async_oneshot::oneshot();
+                let cancel_trigger = RefCell::new(cancel_trigger);
+                let mut cancel = cancel.fuse();
                         
-                        ControlFlow::Break
-                    },
+                button_stop.connect_clicked(clone!(
+                    @weak button_stop, @weak button_sweep, @weak button_oneshot
+                =>move |_| {
+                    let _ = cancel_trigger.borrow_mut().send(());
+                    button_sweep.set_sensitive(true);
+                    button_oneshot.set_sensitive(true);
+                    button_stop.set_sensitive(false);
+                    button_stop.connect_clicked(|_| {});
+                }));
+
+                loop {
+                    let Some(x) = select! {
+                        x = iter.next() => x,
+                        _ = cancel => break,
+                        complete => break,
+                    } else {
+                        break
+                    };
+                    match x {
+                        Ok((i, freq, sample)) => {
+                            let mut graph_data = graph_data.borrow_mut();
+                            let i = i as usize;
+                            if graph_data.samples.len() <= i {
+                                graph_data.samples.resize(i + 1, (0.0, 0.0));
+                                graph_data.samples[i] = (freq as f32, sample as f32);
+                                drawing_area.queue_draw();
+                            }
+                        }
+                        Err(e) => {
+                            error!("Sweep error: {}", e);
+                            break;
+                        }
+                    }
                 }
+
+                let _ = iter.into_inner().cancel().await.map_err(|e| {
+                    error!("Cancel error: {}", e)
+                });
+
+                button_sweep.set_sensitive(true);
+                button_oneshot.set_sensitive(true);
+                button_stop.set_sensitive(false);
+                button_stop.connect_clicked(|_|{});
             }));
         }));
-        
-        let button_sweep: Button = builder.object("button_sweep").unwrap();
+
         button_sweep.connect_clicked(clone!(@strong graph_data => move |_| {
             debug!("{:?}", graph_data.borrow().samples);
         }));
-        
+
         log_win.connect_delete_event(clone!(@strong button_show_logs => move |log_win, _| {
             log_win.set_visible(false);
             button_show_logs.set_label("Open log window");

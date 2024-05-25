@@ -1,5 +1,7 @@
 use std::io::{Read, Write};
-use log::info;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use log::{info, warn};
 use std::thread;
 use std::time::Duration;
 use crate::protocol::commands::CommandOp;
@@ -123,7 +125,7 @@ impl<T: SerialDevice> SWRAnalyzer for FoxDeltaAnalyzer<T> {
                      step_frequency: i32,
                      max_step_count: i32,
                      step_millis: i32,
-                     f: &mut dyn FnMut(i32, i32, i32)) -> error::Result<()> {
+                     f: &mut dyn FnMut(i32, i32, i32) -> bool) -> error::Result<()> {
         self.set_led_blink(LedState::Blink)?;
         self.set_params(noise_filter,
                         start_frequency,
@@ -136,8 +138,11 @@ impl<T: SerialDevice> SWRAnalyzer for FoxDeltaAnalyzer<T> {
             if sample.is_empty() {
                 break;
             }
+
             let cur_freq= start_frequency + step_frequency * sample[0] as i32;
-            f(sample[0] as i32, cur_freq, sample[1] as i32);
+            if !f(sample[0] as i32, cur_freq, sample[1] as i32) {
+                panic!("Cancelling not yet implemented")
+            }
 
             thread::sleep(Duration::from_millis((step_millis / 2) as u64));
         }

@@ -1,7 +1,8 @@
 use std::sync::mpsc::{channel, Sender};
 use std::sync::OnceLock;
 
-use gtk::{glib, SortColumn, SortType, TreeModelSort, TreeStore, TreeView};
+use gtk::{ApplicationWindow, ButtonsType, DialogFlags, glib, MessageType, SortColumn, SortType, TreeModelSort, TreeStore, TreeView, Window};
+use gtk::ffi::{gtk_message_dialog_new, GtkMessageDialog};
 use gtk::glib::{clone, ControlFlow};
 use gtk::prelude::*;
 use log::{Level, LevelFilter, Metadata, Record};
@@ -32,7 +33,21 @@ impl log::Log for Logger {
 const TIME_FORMAT: &str = "%H:%M:%S";
 
 impl Logger {
-    pub fn init(tree_view: TreeView) -> Result<(), log::SetLoggerError> {
+    pub fn init<W: IsA<Window>>(window: W, tree_view: TreeView) -> Result<(), log::SetLoggerError> {
+        // std::panic::set_hook(Box::new(|p| {
+        //     let message = p.to_string();
+        //     glib::idle_add(move || {
+        //         gtk::MessageDialog::new(
+        //             Some(&window),
+        //             DialogFlags::DESTROY_WITH_PARENT & DialogFlags::MODAL,
+        //             MessageType::Error,
+        //             ButtonsType::Close,
+        //             &message
+        //         );
+        //         ControlFlow::Break
+        //     });
+        // }));
+            
         let (send, recv) = channel();
         log::set_logger(LOGGER.get_or_init(||
             Self {
