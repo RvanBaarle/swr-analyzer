@@ -1,12 +1,13 @@
 use std::convert::identity;
-use std::future::Future;
 use std::mem;
+use std::ops::ControlFlow::{Break, Continue};
 use std::ops::DerefMut;
 use std::pin::{Pin, pin};
 use std::task::{Context, Poll};
 
 use async_channel::Receiver;
 use futures::{FutureExt, Stream, TryFutureExt};
+use futures::future::FusedFuture;
 use gtk::gio::spawn_blocking;
 use log::error;
 use pin_project::{pin_project, pinned_drop};
@@ -28,14 +29,14 @@ pub trait SWRAnalyzer {
                      step_frequency: i32,
                      max_step_count: i32,
                      step_millis: i32,
-                     f: &mut dyn FnMut(i32, i32, i32) -> bool) -> Result<()>;
+                     f: &mut dyn FnMut(i32, i32, i32) -> std::ops::ControlFlow<()>) -> Result<()>;
     fn start_continuous(&mut self,
                         noise_filter: i32,
                         start_frequency: i32,
                         step_frequency: i32,
                         max_step_count: i32,
                         step_millis: i32,
-                        f: &mut dyn FnMut(i32, i32, i32) -> bool) -> Result<()>;
+                        f: &mut dyn FnMut(i32, i32, i32) -> std::ops::ControlFlow<()>) -> Result<()>;
 }
 
 #[derive(Debug)]
@@ -109,12 +110,12 @@ impl<D: DerefMut + Send + 'static> AsyncSWRAnalyzer<D> where D::Target: SWRAnaly
                                step_frequency,
                                max_step_count,
                                step_millis, &mut move |i, freq, sample| {
-                    send.send_blocking((i, freq, sample)).is_ok()
+                    send.send_blocking((i, freq, sample))
+                        .map_or_else(|_| Break(()), |_| Continue(()))
                 })
-        }).and_then(|x| async { x });
+        }).and_then(|x| async { x }).fuse();
 
         ScanStream {
-            task_done: false,
             task: Box::pin(task),
             recv,
         }
@@ -130,16 +131,16 @@ impl<D: DerefMut + Send + 'static> AsyncSWRAnalyzer<D> where D::Target: SWRAnaly
 
         let task = self.run_blocking(move |this| {
             this.start_continuous(noise_filter,
-                               start_frequency,
-                               step_frequency,
-                               max_step_count,
-                               step_millis, &mut move |i, freq, sample| {
-                    send.send_blocking((i, freq, sample)).is_ok()
+                                  start_frequency,
+                                  step_frequency,
+                                  max_step_count,
+                                  step_millis, &mut move |i, freq, sample| {
+                    send.send_blocking((i, freq, sample))
+                        .map_or_else(|_| Break(()), |_| Continue(()))
                 })
-        }).and_then(|x| async { x });
+        }).and_then(|x| async { x }).fuse();
 
         ScanStream {
-            task_done: false,
             task: Box::pin(task),
             recv,
         }
@@ -148,8 +149,7 @@ impl<D: DerefMut + Send + 'static> AsyncSWRAnalyzer<D> where D::Target: SWRAnaly
 
 #[pin_project(PinnedDrop)]
 pub struct ScanStream<'a> {
-    task_done: bool, 
-    task: Pin<Box<dyn Future<Output=Result<()>> + 'a>>,
+    task: Pin<Box<dyn FusedFuture<Output=Result<()>> + 'a>>,
     #[pin] recv: Receiver<(i32, i32, i32)>,
 }
 
@@ -158,17 +158,8 @@ impl Stream for ScanStream<'_> {
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut pinned = self.project();
-        if !*pinned.task_done {
-            match pinned.task.poll_unpin(cx) {
-                Poll::Ready(Err(e)) => {
-                    *pinned.task_done = true;
-                    return Poll::Ready(Some(Err(e)));
-                },
-                Poll::Ready(Ok(())) => {
-                    *pinned.task_done = true;
-                }
-                _ => {}
-            }
+        if let Poll::Ready(Err(e)) = pinned.task.poll_unpin(cx) {
+            return Poll::Ready(Some(Err(e)));
         }
         pinned.recv.as_mut().poll_next(cx).map(|x| x.map(Ok))
     }
@@ -177,7 +168,7 @@ impl Stream for ScanStream<'_> {
 #[pinned_drop]
 impl PinnedDrop for ScanStream<'_> {
     fn drop(self: Pin<&mut Self>) {
-        if !self.task_done {
+        if !self.task.is_terminated() {
             panic!("Dropped without finalizing")
         }
     }
@@ -186,11 +177,9 @@ impl PinnedDrop for ScanStream<'_> {
 impl ScanStream<'_> {
     pub async fn cancel(self: Pin<&mut Self>) -> Result<()> {
         self.recv.close();
-        if !self.task_done {
+        if !self.task.is_terminated() {
             let this = self.project();
-            let result = this.task.await;
-            *this.task_done = true;
-            result
+            this.task.await
         } else {
             Ok(())
         }

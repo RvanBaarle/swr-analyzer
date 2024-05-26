@@ -125,7 +125,7 @@ impl<T: SerialDevice> SWRAnalyzer for FoxDeltaAnalyzer<T> {
                      step_frequency: i32,
                      max_step_count: i32,
                      step_millis: i32,
-                     f: &mut dyn FnMut(i32, i32, i32) -> bool) -> error::Result<()> {
+                     f: &mut dyn FnMut(i32, i32, i32) -> std::ops::ControlFlow<()>) -> error::Result<()> {
         self.set_led_blink(LedState::Blink)?;
         self.set_params(noise_filter,
                         start_frequency,
@@ -140,8 +140,8 @@ impl<T: SerialDevice> SWRAnalyzer for FoxDeltaAnalyzer<T> {
             }
 
             let cur_freq= start_frequency + step_frequency * sample[0] as i32;
-            if !f(sample[0] as i32, cur_freq, sample[1] as i32) {
-                panic!("Cancelling not yet implemented")
+            if f(sample[0] as i32, cur_freq, sample[1] as i32).is_break() {
+                unimplemented!("Cancelling not yet implemented")
             }
 
             thread::sleep(Duration::from_millis((step_millis / 2) as u64));
@@ -151,7 +151,14 @@ impl<T: SerialDevice> SWRAnalyzer for FoxDeltaAnalyzer<T> {
         Ok(())
     }
 
-    fn start_continuous(&mut self, _noise_filter: i32, _start_frequency: i32, _step_frequency: i32, _max_step_count: i32, _step_millis: i32, _f: &mut dyn FnMut(i32, i32, i32) -> bool) -> error::Result<()> {
+    fn start_continuous(&mut self,
+                        _noise_filter: i32,
+                        _start_frequency: i32,
+                        _step_frequency: i32,
+                        _max_step_count: i32,
+                        _step_millis: i32,
+                        _f: &mut dyn FnMut(i32, i32, i32) -> std::ops::ControlFlow<()>
+    ) -> error::Result<()> {
         unimplemented!()
     }
 }

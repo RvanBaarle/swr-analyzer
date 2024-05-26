@@ -27,11 +27,11 @@ impl SWRAnalyzer for Dummy {
                      step_frequency: i32,
                      max_step_count: i32,
                      step_millis: i32,
-                     f: &mut dyn FnMut(i32, i32, i32) -> bool) -> error::Result<()> {
+                     f: &mut dyn FnMut(i32, i32, i32) -> std::ops::ControlFlow<()>) -> error::Result<()> {
         debug!("Settings noise: {noise_filter}, startfreq: {start_frequency}, step: {step_frequency}, step count: {max_step_count}, step delay: {step_millis}");
         for i in 0..=max_step_count {
             let cur_freq= start_frequency + step_frequency * i;
-            if !f(i, cur_freq, i) {
+            if f(i, cur_freq, i).is_break() {
                 info!("Scan cancelled");
                 break
             }
@@ -43,13 +43,13 @@ impl SWRAnalyzer for Dummy {
         Ok(())
     }
 
-    fn start_continuous(&mut self, noise_filter: i32, start_frequency: i32, step_frequency: i32, max_step_count: i32, step_millis: i32, f: &mut dyn FnMut(i32, i32, i32) -> bool) -> error::Result<()> {
+    fn start_continuous(&mut self, noise_filter: i32, start_frequency: i32, step_frequency: i32, max_step_count: i32, step_millis: i32, f: &mut dyn FnMut(i32, i32, i32) -> std::ops::ControlFlow<()>) -> error::Result<()> {
         debug!("Settings noise: {noise_filter}, startfreq: {start_frequency}, step: {step_frequency}, step count: {max_step_count}, step delay: {step_millis}");
         'a: loop {
             let offset = (1000.0 * random_double()).floor() as i32;
             for i in 0..=max_step_count {
                 let cur_freq = start_frequency + step_frequency * i;
-                if !f(i, cur_freq, i + offset) {
+                if f(i, cur_freq, i + offset).is_break() {
                     info!("Scan cancelled");
                     break 'a;
                 }

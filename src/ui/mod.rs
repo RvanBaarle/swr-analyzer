@@ -181,8 +181,6 @@ pub fn ui_main() {
                     @weak button_stop, @weak button_sweep, @weak button_oneshot
                 =>move |_| {
                     let _ = cancel_trigger.borrow_mut().send(());
-                    button_sweep.set_sensitive(true);
-                    button_oneshot.set_sensitive(true);
                     button_stop.set_sensitive(false);
                     button_stop.connect_clicked(|_| {});
                 }));
