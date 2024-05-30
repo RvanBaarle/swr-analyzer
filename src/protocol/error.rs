@@ -1,6 +1,7 @@
 use std::any::Any;
 use std::str::Utf8Error;
 use thiserror::Error;
+use tokio::task::JoinError;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -21,7 +22,7 @@ pub enum Error {
     #[error("Operation can't be completed due to a previous error")]
     Previous,
     #[error("thread panic: {0:?}")]
-    Thread(Box<dyn Any + Send>)
+    Thread(JoinError)
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

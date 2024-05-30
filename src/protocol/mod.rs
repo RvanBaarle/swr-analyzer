@@ -8,7 +8,7 @@ use std::task::{Context, Poll};
 use async_channel::Receiver;
 use futures::{FutureExt, Stream, TryFutureExt};
 use futures::future::FusedFuture;
-use gtk::gio::spawn_blocking;
+use gtk4::gio::spawn_blocking;
 use log::error;
 use pin_project::{pin_project, pinned_drop};
 
@@ -73,7 +73,7 @@ impl<D: DerefMut + Send + 'static> AsyncSWRAnalyzer<D> where D::Target: SWRAnaly
                 return Err(error::Error::Previous);
             }
         };
-        match spawn_blocking(move || {
+        match tokio::task::spawn_blocking(move || {
             let result = f(&mut analyzer);
             (analyzer, result)
         }).await {
@@ -149,7 +149,7 @@ impl<D: DerefMut + Send + 'static> AsyncSWRAnalyzer<D> where D::Target: SWRAnaly
 
 #[pin_project(PinnedDrop)]
 pub struct ScanStream<'a> {
-    task: Pin<Box<dyn FusedFuture<Output=Result<()>> + 'a>>,
+    task: Pin<Box<dyn FusedFuture<Output=Result<()>> + Send + 'a>>,
     #[pin] recv: Receiver<(i32, i32, i32)>,
 }
 

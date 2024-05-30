@@ -19,7 +19,7 @@
     };
 
     devShell.${system} = pkgs.mkShell {
-      packages = with pkgs; [ clang libusb.dev pkg-config fontconfig cairo gtk3 glade ];
+      packages = with pkgs; [ clang libusb.dev pkg-config fontconfig cairo gtk3 gtk4 glade ];
     };
 
   };
