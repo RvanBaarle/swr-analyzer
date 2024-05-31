@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use log::info;
 
-use crate::protocol::{error, LedState, SWRAnalyzer};
+use crate::protocol::{error, LedState, SweepParams, SWRAnalyzer};
 use crate::protocol::commands::CommandOp;
 use crate::protocol::error::Error;
 
@@ -61,13 +61,13 @@ pub trait SerialDevice: Read + Write {
 impl<T: Read + Write> SerialDevice for T {}
 
 pub struct FoxDeltaAnalyzer<D: SerialDevice> {
-    serial_device: D
+    serial_device: D,
 }
 
 fn decode_sample(sample: [u8; 32]) -> error::Result<Vec<u16>> {
-    if sample[0] != b':' || sample[1] > 7  || sample[10] != b'\r' {
+    if sample[0] != b':' || sample[1] > 7 || sample[10] != b'\r' {
         error!("Invalid sample {:?}", sample);
-        return Err(Error::InvalidResponse)
+        return Err(Error::InvalidResponse);
     }
     let count = u16::from_le_bytes([sample[2], sample[3]]) as usize;
     let parts: Vec<u16> = sample[4..].chunks_exact(2).take(count).map(|x| {
@@ -121,13 +121,10 @@ impl<T: SerialDevice> SWRAnalyzer for FoxDeltaAnalyzer<T> {
 
     fn start_sweep(&mut self,
                    continuous: bool,
-                   noise_filter: i32,
-                   start_frequency: i32,
-                   step_frequency: i32,
-                   max_step_count: i32,
-                   step_millis: i32,
+                   params: SweepParams,
                    f: &mut dyn FnMut(i32, i32, i32) -> std::ops::ControlFlow<()>) -> error::Result<()> {
-        
+        let SweepParams { noise_filter, start_freq: start_frequency, step_freq: step_frequency, step_count: max_step_count, step_millis } = params;
+
         self.set_led_blink(LedState::Blink)?;
         self.set_params(noise_filter,
                         start_frequency,
@@ -145,7 +142,7 @@ impl<T: SerialDevice> SWRAnalyzer for FoxDeltaAnalyzer<T> {
                 break;
             }
 
-            let cur_freq= start_frequency + step_frequency * sample[0] as i32;
+            let cur_freq = start_frequency + step_frequency * sample[0] as i32;
             if f(sample[0] as i32, cur_freq, sample[1] as i32).is_break() {
                 self.serial_device.send_cmd(CommandOp::SweepDisable)?;
             }
@@ -155,16 +152,5 @@ impl<T: SerialDevice> SWRAnalyzer for FoxDeltaAnalyzer<T> {
         self.serial_device.send_cmd(CommandOp::SweepDisable)?;
         self.set_led_blink(LedState::Off)?;
         Ok(())
-    }
-
-    fn start_continuous(&mut self,
-                        _noise_filter: i32,
-                        _start_frequency: i32,
-                        _step_frequency: i32,
-                        _max_step_count: i32,
-                        _step_millis: i32,
-                        _f: &mut dyn FnMut(i32, i32, i32) -> std::ops::ControlFlow<()>
-    ) -> error::Result<()> {
-        unimplemented!()
     }
 }

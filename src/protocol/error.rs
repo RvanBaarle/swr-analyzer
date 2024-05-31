@@ -1,7 +1,5 @@
-use std::any::Any;
 use std::str::Utf8Error;
 use thiserror::Error;
-use tokio::task::JoinError;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -17,12 +15,6 @@ pub enum Error {
     InvalidResponse,
     #[error("Provided parameter is out of range")]
     OutOfRange,
-    #[error("An operation is currently running")]
-    Busy,
-    #[error("Operation can't be completed due to a previous error")]
-    Previous,
-    #[error("thread panic: {0:?}")]
-    Thread(JoinError)
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

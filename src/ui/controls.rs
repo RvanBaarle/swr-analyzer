@@ -1,7 +1,6 @@
 use log::error;
 use relm4::prelude::*;
 use relm4::prelude::gtk::prelude::*;
-use crate::ui::swr_worker;
 
 use crate::ui::swr_worker::{State, STATE};
 
@@ -9,7 +8,7 @@ pub(super) struct Controls {
     start_freq: gtk::EntryBuffer,
     stop_freq: gtk::EntryBuffer,
     step_count: gtk::EntryBuffer,
-    step_time: gtk::EntryBuffer,
+    step_millis: gtk::EntryBuffer,
     state: State,
 }
 
@@ -30,7 +29,7 @@ pub(super) enum Output {
         start_freq: i32,
         stop_freq: i32,
         step_count: i32,
-        step_time: i32,
+        step_millis: i32,
     },
     Cancel,
 }
@@ -70,7 +69,7 @@ impl SimpleComponent for Controls {
             },
             #[name = "step_time"]
             attach[1, 3, 1, 1]= &gtk::Entry {
-                set_buffer: &model.step_time,
+                set_buffer: &model.step_millis,
             },
             attach[0, 4, 1, 2]= &gtk::Button {
                 set_label: "Stop",
@@ -138,7 +137,7 @@ impl SimpleComponent for Controls {
             start_freq: gtk::EntryBuffer::new(Some("1000000")),
             stop_freq: gtk::EntryBuffer::new(Some("35000000")),
             step_count: gtk::EntryBuffer::new(Some("100")),
-            step_time: gtk::EntryBuffer::new(Some("10")),
+            step_millis: gtk::EntryBuffer::new(Some("10")),
             state: State::Disconnected,
         };
         let widgets = view_output!();
@@ -154,13 +153,13 @@ impl Controls {
         let start_freq = self.start_freq.text().parse::<i32>().or(Err("Error parsing start frequency"))?;
         let stop_freq = self.stop_freq.text().parse::<i32>().or(Err("Error parsing stop frequency"))?;
         let step_count = self.step_count.text().parse::<i32>().or(Err("Error parsing step count"))?;
-        let step_time = self.step_time.text().parse::<i32>().or(Err("Error parsing step time"))?;
+        let step_millis = self.step_millis.text().parse::<i32>().or(Err("Error parsing step time"))?;
         Ok(Output::Start {
             continuous,
             start_freq,
             stop_freq,
             step_count,
-            step_time,
+            step_millis,
         })
     }
 }

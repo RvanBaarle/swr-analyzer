@@ -2,11 +2,13 @@ use std::fmt::{Debug, Display, Formatter};
 use std::ops::ControlFlow;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
+use std::time::Duration;
 
 use log::{error, info};
-use relm4::{Component, ComponentParts, ComponentSender, SharedState, Worker};
+use relm4::{Component, ComponentParts, ComponentSender, Sender, SharedState};
 
-use crate::protocol::{error, SWRAnalyzer};
+use crate::protocol::{error, SweepParams, SWRAnalyzer};
 use crate::protocol::dummy::Dummy;
 use crate::protocol::foxdelta::FoxDeltaAnalyzer;
 use crate::protocol::libusb::SerialHID;
@@ -18,10 +20,7 @@ pub(super) enum Input {
     Connect { dummy: bool },
     Start {
         continuous: bool,
-        start_freq: i32,
-        step_freq: i32,
-        step_count: i32,
-        step_time: i32,
+        params: SweepParams,
     },
     Cancel,
 }
@@ -58,9 +57,7 @@ impl Component for SwrWorker {
     type Root = ();
     type Widgets = ();
 
-    fn init_root() -> Self::Root {
-        ()
-    }
+    fn init_root() -> Self::Root {}
 
     fn init(_init: Self::Init, _root: Self::Root, _sender: ComponentSender<Self>) -> relm4::ComponentParts<SwrWorker> {
         *STATE.write() = State::Disconnected;
@@ -92,7 +89,7 @@ impl Component for SwrWorker {
                 }
                 *STATE.write() = State::Idle;
             }
-            Input::Start { continuous, start_freq, step_freq, step_count, step_time } => {
+            Input::Start { continuous, params } => {
                 *STATE.write() = State::Busy;
                 let cancel = Arc::new(AtomicBool::new(false));
                 let Some(mut device) = self.device.take(cancel.clone()) else {
@@ -106,33 +103,20 @@ impl Component for SwrWorker {
                             freq: freq as f32,
                             value: sample as f32,
                         })).expect("output hung up");
-                        
+
                         if cancel.load(Ordering::Relaxed) {
                             ControlFlow::Break(())
                         } else {
                             ControlFlow::Continue(())
                         }
                     };
-                    if let Err(e) = if continuous {
-                        device.start_continuous(
-                            600,
-                            start_freq,
-                            step_freq,
-                            step_count,
-                            step_time,
-                            &mut handler,
-                        )
-                    } else {
+                    if let Err(e) =
                         device.start_sweep(
-                            false,
-                            600,
-                            start_freq,
-                            step_freq,
-                            step_count,
-                            step_time,
+                            continuous,
+                            params,
                             &mut handler,
                         )
-                    } {
+                    {
                         error!("error during sweep: {}", e);
                     }
 
@@ -160,6 +144,14 @@ impl Component for SwrWorker {
             }
         }
     }
+
+    fn shutdown(&mut self, _widgets: &mut Self::Widgets, _output: Sender<Self::Output>) {
+        if let InternalState::Busy { cancel } = &self.device {
+            cancel.store(true, Ordering::Relaxed);
+            // Wait a bit to make sure the thread has exited
+            thread::sleep(Duration::from_millis(500));
+        }
+    }
 }
 
 fn get_analyzer(use_dummy: bool) -> error::Result<Box<dyn SWRAnalyzer + Send>> {
@@ -185,7 +177,6 @@ pub(super) enum State {
     Disconnected,
     Idle,
     Busy,
-    Error,
 }
 
 impl Default for State {
@@ -200,7 +191,6 @@ impl Display for State {
             State::Disconnected => write!(f, "Disconnected"),
             State::Idle => write!(f, "Idle"),
             State::Busy => write!(f, "Busy"),
-            State::Error => write!(f, "Errored"),
         }
     }
 }
@@ -209,7 +199,6 @@ enum InternalState<T> {
     Disconnected,
     Idle(T),
     Busy { cancel: Arc<AtomicBool> },
-    Error,
 }
 
 impl<T> InternalState<T> {

@@ -4,8 +4,7 @@ use std::time::Duration;
 use log::{debug, info};
 use rand::{Rng, thread_rng};
 
-use crate::protocol::{error, LedState};
-use crate::protocol::error::Error;
+use crate::protocol::{error, LedState, SweepParams};
 use crate::protocol::SWRAnalyzer;
 
 pub struct Dummy;
@@ -23,12 +22,9 @@ impl SWRAnalyzer for Dummy {
 
     fn start_sweep(&mut self,
                    continuous: bool,
-                   noise_filter: i32,
-                   start_frequency: i32,
-                   step_frequency: i32,
-                   max_step_count: i32,
-                   step_millis: i32,
+                   params: SweepParams,
                    f: &mut dyn FnMut(i32, i32, i32) -> std::ops::ControlFlow<()>) -> error::Result<()> {
+        let SweepParams { noise_filter, start_freq: start_frequency, step_freq: step_frequency, step_count: max_step_count, step_millis } = params;
         debug!("Settings noise: {noise_filter}, startfreq: {start_frequency}, step: {step_frequency}, step count: {max_step_count}, step delay: {step_millis}");
         'a: loop {
             let offset = thread_rng().gen_range(0..1000);
@@ -37,9 +33,6 @@ impl SWRAnalyzer for Dummy {
                 if f(i, cur_freq, i + offset).is_break() {
                     info!("Scan cancelled");
                     break 'a;
-                }
-                if i == 101 {
-                    return Err(Error::InvalidResponse);
                 }
                 thread::sleep(Duration::from_millis(step_millis as u64));
             }

@@ -1,18 +1,19 @@
 use std::fmt::Debug;
 
-use async_oneshot::Sender;
 use relm4::{Component, ComponentController, Controller, gtk, WorkerController};
 use relm4::prelude::*;
 use relm4::prelude::gtk::prelude::*;
+use crate::protocol::SweepParams;
 
 use crate::ui::controls::Controls;
 use crate::ui::graph::Graph;
+use crate::ui::log::LogWindow;
 use crate::ui::swr_worker::{State, SwrWorker};
 
 mod controls;
 mod graph;
-pub(crate) mod log;
-pub(self) mod swr_worker;
+mod log;
+mod swr_worker;
 
 
 pub struct App {
@@ -20,16 +21,20 @@ pub struct App {
     controls: Controller<Controls>,
     graph: Controller<Graph>,
     state: State,
+    log_window: Controller<LogWindow>,
 }
 
 #[derive(Debug)]
-pub enum Message {
+pub enum Input {
     #[doc(hidden)]
     #[allow(private_interfaces)]
     Controls(controls::Output),
     #[doc(hidden)]
     #[allow(private_interfaces)]
     Worker(swr_worker::Output),
+    ToggleLog,
+    #[doc(hidden)]
+    #[allow(private_interfaces)]
     StateChange(State),
 }
 
@@ -37,7 +42,7 @@ pub enum Message {
 #[relm4::component(pub)]
 //noinspection RsSortImplTraitMembers
 impl Component for App {
-    type Input = Message;
+    type Input = Input;
     type Output = ();
     type Init = ();
     type CommandOutput = ();
@@ -57,6 +62,9 @@ impl Component for App {
                 },
                 attach[0, 1, 1, 1]= &gtk::Button {
                     set_label: "Open log window",
+                    connect_clicked[sender] => move |_| {
+                        sender.input(Input::ToggleLog)
+                    }
                 },
                 attach[1, 1, 1, 1]= &gtk::Label {
                     #[watch]
@@ -68,10 +76,10 @@ impl Component for App {
 
     fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
-            Message::Controls(controls::Output::Connect) => {
+            Input::Controls(controls::Output::Connect) => {
                 self.analyzer.emit(swr_worker::Input::Connect { dummy: true });
             }
-            Message::Controls(controls::Output::Start { continuous, start_freq, stop_freq, step_count, step_time }) => {
+            Input::Controls(controls::Output::Start { continuous, start_freq, stop_freq, step_count, step_millis }) => {
                 self.graph.sender().emit(graph::Input::Clear {
                     start_freq: start_freq as f32,
                     stop_freq: stop_freq as f32,
@@ -80,45 +88,58 @@ impl Component for App {
                 });
 
                 let step_freq = (stop_freq - start_freq) / step_count + 1;
-
-                self.analyzer.emit(swr_worker::Input::Start {
-                    continuous,
+                let params = SweepParams {
+                    noise_filter: 600,
                     start_freq,
                     step_freq,
                     step_count,
-                    step_time,
+                    step_millis,
+                };
+
+                self.analyzer.emit(swr_worker::Input::Start {
+                    continuous,
+                    params
                 });
             }
-            Message::Controls(controls::Output::Cancel) => {
+            Input::Controls(controls::Output::Cancel) => {
                 self.analyzer.emit(swr_worker::Input::Cancel);
             }
-            Message::Worker(swr_worker::Output::Sample(sample)) => {
+            Input::Worker(swr_worker::Output::Sample(sample)) => {
                 self.graph.emit(graph::Input::Sample(sample));
             }
-            Message::StateChange(state) => { self.state = state; }
+            Input::StateChange(state) => { self.state = state; }
+            Input::ToggleLog => {
+                self.log_window.emit(log::Input::ToggleVisible);
+            }
         }
     }
 
     fn init(_: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
         let controls = Controls::builder()
             .launch(())
-            .forward(sender.input_sender(), Message::Controls);
+            .forward(sender.input_sender(), Input::Controls);
         let graph = Graph::builder()
             .launch(())
             .detach();
+        let log_window = LogWindow::builder()
+            .launch(())
+            .detach();
+        
         let analyzer = SwrWorker::builder()
             .detach_worker(())
-            .forward(sender.input_sender(), Message::Worker);
+            .forward(sender.input_sender(), Input::Worker);
+        
         let model = Self {
             state: State::Disconnected,
             analyzer,
             controls,
             graph,
+            log_window,
         };
 
         let widgets = view_output!();
 
-        swr_worker::STATE.subscribe(sender.input_sender(), |state| Message::StateChange(*state));
+        swr_worker::STATE.subscribe(sender.input_sender(), |state| Input::StateChange(*state));
 
         ComponentParts { model, widgets }
     }

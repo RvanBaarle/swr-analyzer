@@ -45,7 +45,7 @@ impl Component for Graph {
         }
     }
 
-    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, root: &Self::Root) {
+    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             Input::Clear {
                 start_freq,
@@ -69,7 +69,7 @@ impl Component for Graph {
         draw_graph(self);
     }
 
-    fn init(init: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
+    fn init(_init: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
 
         let mut model = Self {
             start_freq: 0.0,
@@ -79,10 +79,12 @@ impl Component for Graph {
             samples: vec![],
             draw_handler: DrawHandler::new(),
         };
+
+        model.draw_handler = DrawHandler::new_with_drawing_area(root);
+
+        let root = model.draw_handler.drawing_area();
         
         let widgets = view_output!();
-        
-        model.draw_handler = DrawHandler::new_with_drawing_area(widgets.drawing_area.clone());
         
         ComponentParts {
             model,
@@ -92,8 +94,11 @@ impl Component for Graph {
 }
 
 fn draw_graph(graph: &mut Graph) {
-    let (w, h) = graph.draw_handler.size();
+    let size = graph.draw_handler.drawing_area().allocation();
+    let w = size.width();
+    let h = size.height();
     let cx = graph.draw_handler.get_context();
+
     let be = CairoBackend::new(&cx, (w as u32, h as u32)).expect("cairo issue");
     
     let root = be.into_drawing_area();
