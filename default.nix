@@ -14,23 +14,15 @@
       };
       gobject-sys = attrs: {
         nativeBuildInputs = [ pkgs.pkg-config ];
-        buildInputs = [ pkgs.gtk3.dev ];
+        buildInputs = [ pkgs.gtk4.dev ];
       };
       gio-sys = attrs: {
         nativeBuildInputs = [ pkgs.pkg-config ];
-        buildInputs = [ pkgs.gtk3.dev ];
+        buildInputs = [ pkgs.gtk4.dev ];
       };
       gdk-pixbuf-sys = attrs: {
         nativeBuildInputs = [ pkgs.pkg-config ];
-        buildInputs = [ pkgs.gtk3.dev ];
-      };
-      gdk-sys = attrs: {
-        nativeBuildInputs = [ pkgs.pkg-config ];
-        buildInputs = [ pkgs.gtk3.dev ];
-      };
-      swr-analyzer = attrs: {
-        nativeBuildInputs = [ pkgs.pkg-config ];
-        buildInputs = [ pkgs.zlib.dev ];
+        buildInputs = [ pkgs.gtk4.dev ];
       };
     };
   };

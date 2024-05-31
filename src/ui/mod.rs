@@ -76,8 +76,11 @@ impl Component for App {
 
     fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
-            Input::Controls(controls::Output::Connect) => {
-                self.analyzer.emit(swr_worker::Input::Connect { dummy: true });
+            Input::Controls(controls::Output::Connect { dummy }) => {
+                self.analyzer.emit(swr_worker::Input::Connect { dummy });
+            }
+            Input::Controls(controls::Output::Disconnect) => {
+                self.analyzer.emit(swr_worker::Input::Disconnect);
             }
             Input::Controls(controls::Output::Start { continuous, start_freq, stop_freq, step_count, step_millis }) => {
                 self.graph.sender().emit(graph::Input::Clear {
@@ -98,7 +101,7 @@ impl Component for App {
 
                 self.analyzer.emit(swr_worker::Input::Start {
                     continuous,
-                    params
+                    params,
                 });
             }
             Input::Controls(controls::Output::Cancel) => {
@@ -124,11 +127,11 @@ impl Component for App {
         let log_window = LogWindow::builder()
             .launch(())
             .detach();
-        
+
         let analyzer = SwrWorker::builder()
             .detach_worker(())
             .forward(sender.input_sender(), Input::Worker);
-        
+
         let model = Self {
             state: State::Disconnected,
             analyzer,

@@ -18,6 +18,7 @@ pub(super) static STATE: SharedState<State> = SharedState::new();
 #[derive(Debug)]
 pub(super) enum Input {
     Connect { dummy: bool },
+    Disconnect,
     Start {
         continuous: bool,
         params: SweepParams,
@@ -88,6 +89,14 @@ impl Component for SwrWorker {
                     }
                 }
                 *STATE.write() = State::Idle;
+            }
+            Input::Disconnect => {
+                if !matches!(self.device, InternalState::Idle(..)) {
+                    error!("device busy or not connected");
+                    return;
+                }
+                self.device = InternalState::Disconnected;
+                *STATE.write() = State::Disconnected;
             }
             Input::Start { continuous, params } => {
                 *STATE.write() = State::Busy;

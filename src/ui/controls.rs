@@ -14,16 +14,17 @@ pub(super) struct Controls {
 
 #[derive(Copy, Clone, Debug)]
 pub(super) enum Input {
-    Connect,
     Continuous,
     Oneshot,
-    Cancel,
     StateChange(State),
 }
 
 #[derive(Copy, Clone, Debug)]
 pub(super) enum Output {
-    Connect,
+    Connect {
+        dummy: bool,
+    },
+    Disconnect,
     Start {
         continuous: bool,
         start_freq: i32,
@@ -75,7 +76,7 @@ impl SimpleComponent for Controls {
                 set_label: "Stop",
                 #[watch]
                 set_sensitive: matches!(model.state, State::Busy),
-                connect_clicked[sender] => move |_| sender.input(Input::Cancel)
+                connect_clicked[sender] => move |_| sender.output_sender().emit(Output::Cancel)
             },
             attach[1, 4, 1, 1]= &gtk::Button {
                 set_label: "Continuous",
@@ -93,16 +94,29 @@ impl SimpleComponent for Controls {
                 set_label: "Connect dummy",
                 #[watch]
                 set_visible: matches!(model.state, State::Disconnected),
-                connect_clicked[sender] => move |_| sender.input(Input::Connect)
+                connect_clicked[sender] => move |_| sender.output_sender().emit(Output::Connect {
+                    dummy: true
+                })
+            },
+            attach[1, 7, 2, 1]= &gtk::Button {
+                set_label: "Connect Fox-Delta",
+                #[watch]
+                set_visible: matches!(model.state, State::Disconnected),
+                connect_clicked[sender] => move |_| sender.output_sender().emit(Output::Connect {
+                    dummy: false
+                })
+            },
+            attach[1, 6, 2, 1]= &gtk::Button {
+                set_label: "Disconnect",
+                #[watch]
+                set_visible: matches!(model.state, State::Idle),
+                connect_clicked[sender] => move |_| sender.output_sender().emit(Output::Disconnect)
             },
         }
     }
 
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>) {
         match message {
-            Input::Connect => {
-                sender.output(Output::Connect).unwrap()
-            }
             Input::Continuous => {
                 match self.parse_parameters(true) {
                     Ok(p) => {
@@ -122,9 +136,6 @@ impl SimpleComponent for Controls {
                         error!("{}", e)
                     }
                 }
-            }
-            Input::Cancel => {
-                sender.output(Output::Cancel).unwrap()
             }
             Input::StateChange(state) =>  {
                 self.state = state
