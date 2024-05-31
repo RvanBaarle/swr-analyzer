@@ -1,9 +1,10 @@
-use plotters::backend::DrawingBackend;
 use plotters::prelude::*;
 use plotters_cairo::CairoBackend;
 use relm4::abstractions::DrawHandler;
 use relm4::prelude::*;
 use relm4::prelude::gtk::prelude::*;
+
+use crate::ui::swr_worker::Sample;
 
 pub struct Graph {
     start_freq: f32,
@@ -24,13 +25,6 @@ pub enum Input {
     },
     Sample(Sample),
     Resize,
-}
-
-#[derive(Debug)]
-pub struct Sample {
-    pub index: usize,
-    pub freq: f32,
-    pub value: f32,
 }
 
 #[relm4::component(pub)]

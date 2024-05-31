@@ -1,4 +1,5 @@
 use std::convert::identity;
+use std::fmt::{Debug, Formatter};
 use std::mem;
 use std::ops::ControlFlow::{Break, Continue};
 use std::ops::DerefMut;
@@ -23,20 +24,23 @@ mod commands;
 pub trait SWRAnalyzer {
     fn version(&mut self) -> Result<String>;
     fn set_led_blink(&mut self, state: LedState) -> Result<()>;
-    fn start_oneshot(&mut self,
-                     noise_filter: i32,
-                     start_frequency: i32,
-                     step_frequency: i32,
-                     max_step_count: i32,
-                     step_millis: i32,
-                     f: &mut dyn FnMut(i32, i32, i32) -> std::ops::ControlFlow<()>) -> Result<()>;
+    fn start_sweep(&mut self,
+                   continuous: bool,
+                   noise_filter: i32,
+                   start_frequency: i32,
+                   step_frequency: i32,
+                   max_step_count: i32,
+                   step_millis: i32,
+                   f: &mut dyn FnMut(i32, i32, i32) -> std::ops::ControlFlow<()>) -> Result<()>;
     fn start_continuous(&mut self,
                         noise_filter: i32,
                         start_frequency: i32,
                         step_frequency: i32,
                         max_step_count: i32,
                         step_millis: i32,
-                        f: &mut dyn FnMut(i32, i32, i32) -> std::ops::ControlFlow<()>) -> Result<()>;
+                        f: &mut dyn FnMut(i32, i32, i32) -> std::ops::ControlFlow<()>) -> Result<()> {
+        self.start_sweep(true, noise_filter, start_frequency, step_frequency, max_step_count, step_millis, f)
+    }
 }
 
 #[derive(Debug)]
@@ -105,11 +109,12 @@ impl<D: DerefMut + Send + 'static> AsyncSWRAnalyzer<D> where D::Target: SWRAnaly
         let (send, recv) = async_channel::unbounded();
 
         let task = self.run_blocking(move |this| {
-            this.start_oneshot(noise_filter,
-                               start_frequency,
-                               step_frequency,
-                               max_step_count,
-                               step_millis, &mut move |i, freq, sample| {
+            this.start_sweep(
+                false, noise_filter,
+                start_frequency,
+                step_frequency,
+                max_step_count,
+                step_millis, &mut move |i, freq, sample| {
                     send.send_blocking((i, freq, sample))
                         .map_or_else(|_| Break(()), |_| Continue(()))
                 })

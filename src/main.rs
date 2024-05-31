@@ -1,6 +1,6 @@
-use relm4::RelmApp;
+use relm4::{RELM_THREADS, RelmApp};
 
-use crate::ui::relm::App;
+use ui::App;
 
 mod protocol;
 mod ui;
@@ -8,6 +8,6 @@ mod ui;
 fn main() {
     let app = RelmApp::new("nl.vbaarle.ruben.swranalyzer");
     ui::log::Logger::init();
-    app.run_async::<App>(());
+    app.run::<App>(());
 }
 

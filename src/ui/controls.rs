@@ -1,8 +1,9 @@
 use log::error;
 use relm4::prelude::*;
 use relm4::prelude::gtk::prelude::*;
+use crate::ui::swr_worker;
 
-use crate::ui::relm::State;
+use crate::ui::swr_worker::{State, STATE};
 
 pub(super) struct Controls {
     start_freq: gtk::EntryBuffer,
@@ -34,7 +35,7 @@ pub(super) enum Output {
     Cancel,
 }
 
-#[relm4::component(pub (super))]
+#[relm4::component(pub(super))]
 //noinspection RsSortImplTraitMembers
 impl SimpleComponent for Controls {
     type Input = Input;
@@ -132,7 +133,7 @@ impl SimpleComponent for Controls {
         }
     }
 
-    fn init(init: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
+    fn init(_init: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
         let model = Self {
             start_freq: gtk::EntryBuffer::new(Some("1000000")),
             stop_freq: gtk::EntryBuffer::new(Some("35000000")),
@@ -141,6 +142,8 @@ impl SimpleComponent for Controls {
             state: State::Disconnected,
         };
         let widgets = view_output!();
+        
+        STATE.subscribe(sender.input_sender(), |state| Input::StateChange(*state));
 
         ComponentParts { model, widgets }
     }
@@ -159,9 +162,5 @@ impl Controls {
             step_count,
             step_time,
         })
-    }
-    
-    pub fn set_state(&mut self, state: State) {
-        self.state = state;
     }
 }

@@ -119,20 +119,26 @@ impl<T: SerialDevice> SWRAnalyzer for FoxDeltaAnalyzer<T> {
         Ok(())
     }
 
-    fn start_oneshot(&mut self,
-                     noise_filter: i32,
-                     start_frequency: i32,
-                     step_frequency: i32,
-                     max_step_count: i32,
-                     step_millis: i32,
-                     f: &mut dyn FnMut(i32, i32, i32) -> std::ops::ControlFlow<()>) -> error::Result<()> {
+    fn start_sweep(&mut self,
+                   continuous: bool,
+                   noise_filter: i32,
+                   start_frequency: i32,
+                   step_frequency: i32,
+                   max_step_count: i32,
+                   step_millis: i32,
+                   f: &mut dyn FnMut(i32, i32, i32) -> std::ops::ControlFlow<()>) -> error::Result<()> {
+        
         self.set_led_blink(LedState::Blink)?;
         self.set_params(noise_filter,
                         start_frequency,
                         step_frequency,
                         max_step_count,
                         step_millis)?;
-        self.serial_device.send_cmd(CommandOp::SweepOneshot)?;
+        if continuous {
+            self.serial_device.send_cmd(CommandOp::SweepEnable)?;
+        } else {
+            self.serial_device.send_cmd(CommandOp::SweepOneshot)?;
+        }
         loop {
             let sample = decode_sample(self.serial_device.recv_sample()?)?;
             if sample.is_empty() {
@@ -141,7 +147,7 @@ impl<T: SerialDevice> SWRAnalyzer for FoxDeltaAnalyzer<T> {
 
             let cur_freq= start_frequency + step_frequency * sample[0] as i32;
             if f(sample[0] as i32, cur_freq, sample[1] as i32).is_break() {
-                unimplemented!("Cancelling not yet implemented")
+                self.serial_device.send_cmd(CommandOp::SweepDisable)?;
             }
 
             thread::sleep(Duration::from_millis((step_millis / 2) as u64));
