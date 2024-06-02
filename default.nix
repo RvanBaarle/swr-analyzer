@@ -27,4 +27,9 @@
     };
   };
 in
-  cargo.rootCrate.build
+  cargo.rootCrate.build.overrideAttrs {
+    postInstall = ''
+      mkdir -p $out/etc/udev/rules.d
+      cp ./udev/* $out/etc/udev/rules.d/
+    '';
+  }

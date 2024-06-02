@@ -82,13 +82,13 @@ impl SimpleComponent for Controls {
                 set_label: "Continuous",
                 #[watch]
                 set_sensitive: matches!(model.state, State::Idle),
-                connect_clicked[sender] => move |_| sender.input(Input::Continuous)
+                connect_clicked => Input::Continuous,
             },
             attach[1, 5, 1, 1]= &gtk::Button {
                 set_label: "Oneshot",
                 #[watch]
                 set_sensitive: matches!(model.state, State::Idle),
-                connect_clicked[sender] => move |_| sender.input(Input::Oneshot)
+                connect_clicked => Input::Oneshot
             },
             attach[1, 6, 2, 1]= &gtk::Button {
                 set_label: "Connect dummy",

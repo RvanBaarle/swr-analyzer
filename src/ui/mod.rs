@@ -1,4 +1,5 @@
 use std::fmt::Debug;
+use gtk4::Window;
 
 use relm4::{Component, ComponentController, Controller, gtk, WorkerController};
 use relm4::prelude::*;
@@ -14,6 +15,7 @@ mod controls;
 mod graph;
 mod log;
 mod swr_worker;
+mod util;
 
 
 pub struct App {
@@ -56,10 +58,7 @@ impl Component for App {
 
             gtk::Grid {
                 attach[0, 0, 1, 1]= model.controls.widget(),
-                attach[1, 0, 1, 1]= model.graph.widget() {
-                    set_hexpand: true,
-                    set_vexpand: true,
-                },
+                attach[1, 0, 1, 1]= model.graph.widget() {},
                 attach[0, 1, 1, 1]= &gtk::Button {
                     set_label: "Open log window",
                     connect_clicked[sender] => move |_| {
@@ -84,8 +83,8 @@ impl Component for App {
             }
             Input::Controls(controls::Output::Start { continuous, start_freq, stop_freq, step_count, step_millis }) => {
                 self.graph.sender().emit(graph::Input::Clear {
-                    start_freq: start_freq as f32,
-                    stop_freq: stop_freq as f32,
+                    x_min: start_freq as f32,
+                    x_max: stop_freq as f32,
                     y_min: 0.0,
                     y_max: 1000.0,
                 });
@@ -122,7 +121,7 @@ impl Component for App {
             .launch(())
             .forward(sender.input_sender(), Input::Controls);
         let graph = Graph::builder()
-            .launch(())
+            .launch(root.clone().into())
             .detach();
         let log_window = LogWindow::builder()
             .launch(())
