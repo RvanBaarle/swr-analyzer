@@ -1,9 +1,10 @@
 mod element;
+mod color_binding;
 
 use std::cell::RefCell;
 use std::ops::Deref;
 use std::rc::Rc;
-use gtk4::{EventControllerMotion, Gesture, MultiSelection, ResponseType};
+use gtk4::{EventControllerMotion, Gesture, hsv_to_rgb, MultiSelection, ResponseType};
 use gtk4::gdk::RGBA;
 use log::{debug, error, trace, warn};
 use plotters::coord::ReverseCoordTranslate;
@@ -15,6 +16,7 @@ use relm4::binding::{Binding, BoolBinding, F32Binding};
 use relm4::prelude::*;
 use relm4::prelude::gtk::prelude::*;
 use relm4::typed_view::column::TypedColumnView;
+use crate::ui::graph::color_binding::RGBABinding;
 use crate::ui::graph::element::GraphElement;
 
 use crate::ui::swr_worker::Sample;
@@ -45,7 +47,7 @@ pub enum Input {
     Redraw,
     ColorPicker(u32),
     Delete(u32),
-    SetColor(Option<RGBColor>),
+    SetColor(Option<RGBA>),
 }
 
 #[relm4::component(pub)]
@@ -92,23 +94,17 @@ impl Component for Graph {
             #[watch]
             set_rgba?: &model.last_color,
             connect_color_activated[sender] => move |c, color| {
-                let r = (color.red() * 255.0) as u8;
-                let g = (color.green() * 255.0) as u8;
-                let b = (color.blue() * 255.0) as u8;
-                sender.input(Input::SetColor(Some(RGBColor(r, g, b))))
+                sender.input(Input::SetColor(Some(color.clone())))
             },
             connect_response[sender] => move |c, r| {
-                debug!("Color picker response: {:?}", r);
+                debug!("Color picker response for index: {:?}", r);
                 if r == ResponseType::Cancel {
                     sender.input(Input::SetColor(None));
                     return;
                 }
                 let color = c.rgba();
-
-                let r = (color.red() * 255.0) as u8;
-                let g = (color.green() * 255.0) as u8;
-                let b = (color.blue() * 255.0) as u8;
-                sender.input(Input::SetColor(Some(RGBColor(r, g, b))))
+                
+                sender.input(Input::SetColor(Some(color.clone())))
             },
         }
     }
@@ -131,7 +127,7 @@ impl Component for Graph {
                     let previous_element = previous_element.borrow_mut();
                     previous_element.visible.set(false);
                 }
-                let (r, g, b) = HSLColor(thread_rng().gen_range(0.0..1.0), 1.0, 0.5).to_backend_color().rgb;
+                let (r, g, b) = hsv_to_rgb(thread_rng().gen_range(0.0..1.0), 1.0, 1.0);
                 let element = GraphElement {
                     visible: BoolBinding::new(true),
                     x_min: F32Binding::new(start_freq),
@@ -139,7 +135,7 @@ impl Component for Graph {
                     y_min: F32Binding::new(y_min),
                     y_max: F32Binding::new(y_max),
                     samples: vec![],
-                    color: Rc::new(RefCell::new(RGBColor(r, g, b))),
+                    color: RGBABinding::new(RGBA::new(r, g, b, 1.0)),
                     sender: sender.input_sender().clone(),
                 };
                 element.visible.connect_value_notify(move |_| sender.input(Input::Redraw));
@@ -164,22 +160,15 @@ impl Component for Graph {
 
             Input::ColorPicker(index) => {
                 println!("color picker {}", index);
-                let RGBColor(r, g, b) = *self.elements.get(index).unwrap().borrow().color.borrow();
-                let rgba = RGBA::new(
-                    r as f32 / 255.0,
-                    g as f32 / 255.0,
-                    b as f32 / 255.0,
-                    1.0
-                );
+                let color = self.elements.get(index).unwrap().borrow().color.get();
                 self.color_picker = Some(index);
-                self.last_color = Some(rgba);
+                self.last_color = Some(color);
             }
             Input::SetColor(color) => {
                 if let Some(i) = self.color_picker.take() {
                     if let Some(color) = color {
                         let elem = self.elements.get(i).unwrap();
-                        *elem.borrow_mut().color.borrow_mut() = color;
-                        self.elements.view.queue_resize();
+                        elem.borrow_mut().color.set(color);
                     }
                 } else {
                     warn!("color picked for unknown element");
@@ -254,10 +243,16 @@ impl Graph {
 
             if !elem.visible.get() { continue; }
 
+            let color = elem.color.get();
+            
             chart
                 .draw_series(LineSeries::new(
                     elem.samples.iter().copied(),
-                    *elem.color.borrow(),
+                    RGBColor(
+                        (color.red() * 255.0) as u8,
+                        (color.green() * 255.0) as u8,
+                        (color.blue() * 255.0) as u8,
+                    ),
                 )).unwrap()
                 .label("main")
                 .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &RED));

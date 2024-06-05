@@ -1,19 +1,15 @@
-use std::cell::RefCell;
-use std::rc::{Rc, Weak};
-
 use gtk4::{GestureClick, ListItem, MultiSelection};
-use gtk4::gdk::RGBA;
-use gtk4::glib::clone::Downgrade;
 use gtk4::glib::{SignalHandlerId, WeakRef};
+use gtk4::glib::clone::Downgrade;
 use gtk4::prelude::{ButtonExt, DrawingAreaExtManual, GdkCairoContextExt, ListItemExt, ObjectExt, WidgetExt};
-use plotters::style::RGBColor;
 use relm4::{gtk, RelmObjectExt, Sender};
 use relm4::binding::{Binding, BoolBinding, F32Binding};
-use relm4::typed_view::column::{LabelColumn, RelmColumn, TypedColumnView};
+use relm4::typed_view::column::{RelmColumn, TypedColumnView};
 use relm4::typed_view::TypedListItem;
-use crate::ui::graph;
-use crate::ui::graph::Input;
 
+use crate::ui::graph;
+use crate::ui::graph::color_binding::RGBABinding;
+use crate::ui::graph::Input;
 use crate::ui::swr_worker::Sample;
 use crate::ui::util::{BindingLabelColumn, BindingLabelColumnWrapper};
 
@@ -24,7 +20,7 @@ pub(super) struct GraphElement {
     pub(super) y_min: F32Binding,
     pub(super) y_max: F32Binding,
     pub(super) samples: Vec<(f32, f32)>,
-    pub(super) color: Rc<RefCell<RGBColor>>,
+    pub(super) color: RGBABinding,
     pub(super) sender: Sender<graph::Input>,
 }
 
@@ -87,7 +83,7 @@ impl RelmColumn for VisibleColumn {
 
 struct ColorColumn {
     click_handler: GestureClick,
-    signal_handle: Option<SignalHandlerId>,
+    handles: Option<[SignalHandlerId; 2]>,
     list_item: WeakRef<ListItem>,
 }
 
@@ -104,38 +100,41 @@ impl RelmColumn for ColorColumn {
 
         widget.add_controller(click_handler.clone());
 
-        (widget, Self { click_handler, signal_handle: None, list_item: Downgrade::downgrade(list_item) })
+        (widget, Self { click_handler, handles: None, list_item: Downgrade::downgrade(list_item) })
     }
 
     fn bind(item: &mut Self::Item, widgets: &mut Self::Widgets, root: &mut Self::Root) {
         let color = item.color.clone();
-
+        
+        let color2 = color.clone();
         root.set_draw_func(move |_, ctx, w, h| {
-            let RGBColor(r, g, b) = *color.borrow();
             ctx.rectangle(0.0, 0.0, w as f64, h as f64);
-            ctx.set_source_color(&RGBA::new(
-                r as f32 / 255.0,
-                g as f32 / 255.0,
-                b as f32 / 255.0,
-                1.0,
-            ));
+            ctx.set_source_color(&color2.get());
             ctx.fill().unwrap()
         });
 
         let sender = item.sender.clone();
         let list_item = widgets.list_item.clone();
 
-        widgets.signal_handle = Some(widgets.click_handler.connect_released(move |_, _, _, _| {
+        let click_handler = widgets.click_handler.connect_released(move |_, _, _, _| {
             if let Some(item) = list_item.upgrade() {
                 sender.send(Input::ColorPicker(item.position())).unwrap()
             }
-        }));
+        });
+        
+        let root = root.clone();
+        let redraw_handler = color.connect_value_notify(move |v| {
+            root.queue_draw();
+        });
+        
+        widgets.handles = Some([click_handler, redraw_handler]);
     }
 
-    fn unbind(_item: &mut Self::Item, widgets: &mut Self::Widgets, root: &mut Self::Root) {
+    fn unbind(item: &mut Self::Item, widgets: &mut Self::Widgets, root: &mut Self::Root) {
         root.set_draw_func(|_, _, _, _| {});
-        if let Some(x) = widgets.signal_handle.take() {
-            widgets.click_handler.disconnect(x);
+        if let Some([click_handler, redraw_handler]) = widgets.handles.take() {
+            widgets.click_handler.disconnect(click_handler);
+            item.color.disconnect(redraw_handler)
         }
     }
 }

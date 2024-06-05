@@ -1,11 +1,14 @@
 use std::fmt::Debug;
-use gtk4::Window;
 
+use ::log::error;
+use gtk4::glib::Propagation;
+use gtk4::Window;
 use relm4::{Component, ComponentController, Controller, gtk, WorkerController};
 use relm4::prelude::*;
 use relm4::prelude::gtk::prelude::*;
-use crate::protocol::SweepParams;
 
+use crate::{install_udev, try_install_udev};
+use crate::protocol::SweepParams;
 use crate::ui::controls::Controls;
 use crate::ui::graph::Graph;
 use crate::ui::log::LogWindow;
@@ -70,6 +73,14 @@ impl Component for App {
                     set_label: &model.state.to_string(),
                 },
             },
+            
+            connect_close_request[sender] => move |_| {
+                if *swr_worker::STATE.read() == State::Busy {
+                    sender.input(Input::Controls(controls::Output::Cancel));
+                    return Propagation::Stop
+                }
+                Propagation::Proceed
+            },
         }
     }
 
@@ -112,6 +123,11 @@ impl Component for App {
             Input::StateChange(state) => { self.state = state; }
             Input::ToggleLog => {
                 self.log_window.emit(log::Input::ToggleVisible);
+            }
+            Input::Controls(controls::Output::Udev) => {
+                if let Err(e) = try_install_udev(true) {
+                    error!("error installing udev rules: {}", e);
+                }
             }
         }
     }

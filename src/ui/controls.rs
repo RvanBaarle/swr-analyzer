@@ -33,6 +33,7 @@ pub(super) enum Output {
         step_millis: i32,
     },
     Cancel,
+    Udev,
 }
 
 #[relm4::component(pub(super))]
@@ -105,6 +106,12 @@ impl SimpleComponent for Controls {
                 connect_clicked[sender] => move |_| sender.output_sender().emit(Output::Connect {
                     dummy: false
                 })
+            },
+            attach[1, 8, 2, 1]= &gtk::Button {
+                set_label: "Install udev rules",
+                #[watch]
+                set_visible: matches!(model.state, State::Disconnected),
+                connect_clicked[sender] => move |_| sender.output_sender().emit(Output::Udev)
             },
             attach[1, 6, 2, 1]= &gtk::Button {
                 set_label: "Disconnect",

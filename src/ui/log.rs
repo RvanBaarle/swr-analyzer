@@ -23,10 +23,12 @@ impl Log for LogSender {
     }
 
     fn log(&self, record: &Record) {
+        let msg = record.args().to_string();
+        eprintln!("[{}] {}", record.level(), msg);
         self.0.emit(Input::Log(LogItem {
             date: Local::now(),
             level: record.level(),
-            msg: record.args().to_string(),
+            msg,
         }))
     }
 

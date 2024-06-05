@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use libusb::{Context, DeviceHandle};
+use log::warn;
 
 use crate::protocol::commands::CommandOp;
 use crate::protocol::error::{Error, Result};
@@ -53,9 +54,18 @@ impl SerialHID {
 
 impl Drop for SerialHID {
     fn drop(&mut self) {
-        self.send_ack(CommandOp::Exit).unwrap();
-        let mut handle = self.handle.take().unwrap();
-        handle.release_interface(0x0).unwrap();
-        handle.attach_kernel_driver(0x0).unwrap();
+        if let Err(e) = self.send_ack(CommandOp::Exit) {
+            warn!("error on drop: {e}");
+        }
+        let Some(mut handle) = self.handle.take() else {
+            warn!("no handle");
+            return;
+        };
+        if let Err(e) = handle.release_interface(0x0) {
+            warn!("failed to release interface: {e}");
+        }
+        if let Err(e) = handle.attach_kernel_driver(0x0) {
+            warn!("failed to reattach kernel driver: {e}");
+        }
     }
 }

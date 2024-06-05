@@ -2,6 +2,7 @@ use std::{env, io};
 use std::fs::File;
 use std::io::{ErrorKind, Write};
 use clap::Parser;
+use log::error;
 use relm4::RelmApp;
 
 use ui::App;
@@ -23,11 +24,11 @@ fn main() {
 
     if args.udev {
         if let Err(e) = try_install_udev(!args.no_elevate) {
-            eprintln!("Installing rules failed: {}", e);
+            eprintln!("{}", e);
         }
         return;
     }
-    
+
     let app = RelmApp::new("nl.vbaarle.ruben.swranalyzer");
     app.run::<App>(());
 }
@@ -54,7 +55,9 @@ fn install_udev_elevated() -> io::Result<()> {
     let executable = std::env::args().next().unwrap();
     let result = std::process::Command::new("pkexec")
         .args(&[&executable, "-u", "--no-elevate"])
-        .status()?;
-    println!("exit with: {}", result);
+        .output()?;
+    if !result.status.success() {
+        error!("Couldn't install rules: {}", String::from_utf8_lossy(&result.stderr).trim())
+    }
     Ok(())
 }

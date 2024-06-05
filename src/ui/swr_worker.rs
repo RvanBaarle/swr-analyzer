@@ -160,6 +160,7 @@ impl Component for SwrWorker {
             // Wait a bit to make sure the thread has exited
             thread::sleep(Duration::from_millis(500));
         }
+        self.device = InternalState::Disconnected;
     }
 }
 
