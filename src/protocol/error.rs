@@ -6,7 +6,7 @@ pub enum Error {
     #[error("i/o error: {0}")]
     Io(#[from] std::io::Error),
     #[error("libusb error: {0}")]
-    LibUsb(#[from] libusb::Error),
+    LibUsb(#[from] rusb::Error),
     #[error("device not found")]
     DeviceNotFound,
     #[error("UTF-8 encoding error in reply")]

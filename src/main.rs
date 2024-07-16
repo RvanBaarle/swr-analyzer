@@ -1,6 +1,7 @@
-use std::{env, io};
 use std::fs::File;
+use std::io;
 use std::io::{ErrorKind, Write};
+
 use clap::Parser;
 use log::error;
 use relm4::RelmApp;
@@ -54,7 +55,7 @@ fn install_udev() -> io::Result<()> {
 fn install_udev_elevated() -> io::Result<()> {
     let executable = std::env::args().next().unwrap();
     let result = std::process::Command::new("pkexec")
-        .args(&[&executable, "-u", "--no-elevate"])
+        .args([&executable, "-u", "--no-elevate"])
         .output()?;
     if !result.status.success() {
         error!("Couldn't install rules: {}", String::from_utf8_lossy(&result.stderr).trim())

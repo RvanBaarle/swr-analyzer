@@ -2,13 +2,12 @@ use std::fmt::Debug;
 
 use ::log::error;
 use gtk4::glib::Propagation;
-use gtk4::Window;
 use relm4::{Component, ComponentController, Controller, gtk, WorkerController};
 use relm4::prelude::*;
 use relm4::prelude::gtk::prelude::*;
 
-use crate::{install_udev, try_install_udev};
 use crate::protocol::SweepParams;
+use crate::try_install_udev;
 use crate::ui::controls::Controls;
 use crate::ui::graph::Graph;
 use crate::ui::log::LogWindow;

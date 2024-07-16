@@ -4,7 +4,7 @@
     src = ./.;
   }) {
     defaultCrateOverrides = pkgs.defaultCrateOverrides // {
-      libusb-sys = attrs: {
+      libusb1-sys = attrs: {
         nativeBuildInputs = [ pkgs.pkg-config ];
         buildInputs = [ pkgs.libusb.dev ];
       };

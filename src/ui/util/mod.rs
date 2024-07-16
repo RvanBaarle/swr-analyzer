@@ -1,12 +1,11 @@
 use std::any::Any;
-use std::fmt::Display;
 
-use gtk4::{glib, ListItem};
-use gtk4::glib::{Object, SignalHandlerId};
+use gtk4::glib::SignalHandlerId;
 use gtk4::glib::value::FromValue;
+use gtk4::ListItem;
 use relm4::binding::Binding;
-use relm4::prelude::*;
 use relm4::gtk::prelude::*;
+use relm4::prelude::*;
 use relm4::typed_view::column::RelmColumn;
 use relm4::typed_view::OrdFn;
 

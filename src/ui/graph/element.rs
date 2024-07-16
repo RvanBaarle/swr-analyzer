@@ -9,7 +9,6 @@ use relm4::typed_view::TypedListItem;
 
 use crate::ui::graph;
 use crate::ui::graph::color_binding::RGBABinding;
-use crate::ui::graph::Input;
 use crate::ui::swr_worker::Sample;
 use crate::ui::util::{BindingLabelColumn, BindingLabelColumnWrapper};
 
@@ -118,12 +117,12 @@ impl RelmColumn for ColorColumn {
 
         let click_handler = widgets.click_handler.connect_released(move |_, _, _, _| {
             if let Some(item) = list_item.upgrade() {
-                sender.send(Input::ColorPicker(item.position())).unwrap()
+                sender.send(graph::Input::ColorPicker(item.position())).unwrap()
             }
         });
         
         let root = root.clone();
-        let redraw_handler = color.connect_value_notify(move |v| {
+        let redraw_handler = color.connect_value_notify(move |_| {
             root.queue_draw();
         });
         
@@ -203,7 +202,7 @@ impl RelmColumn for DeleteColumn {
 
         widgets.signal_handle = Some(root.connect_clicked(move |_| {
             if let Some(item) = list_item.upgrade() {
-                sender.emit(Input::Delete(item.position()))
+                sender.emit(graph::Input::Delete(item.position()))
             }
         }));
     }

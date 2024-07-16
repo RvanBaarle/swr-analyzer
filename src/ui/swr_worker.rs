@@ -168,8 +168,7 @@ fn get_analyzer(use_dummy: bool) -> error::Result<Box<dyn SWRAnalyzer + Send>> {
     let mut device: Box<dyn SWRAnalyzer + Send> = if use_dummy {
         Box::new(Dummy)
     } else {
-        let context = libusb::Context::new()?;
-        Box::new(FoxDeltaAnalyzer::from(SerialHID::new(Arc::new(context))?))
+        Box::new(FoxDeltaAnalyzer::from(SerialHID::new()?))
     };
     info!("version: {}", device.version()?);
     Ok(device)

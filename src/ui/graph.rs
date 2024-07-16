@@ -1,12 +1,7 @@
-mod element;
-mod color_binding;
-
-use std::cell::RefCell;
-use std::ops::Deref;
-use std::rc::Rc;
-use gtk4::{EventControllerMotion, Gesture, hsv_to_rgb, MultiSelection, ResponseType};
+use std::cmp::Ordering;
+use gtk4::{EventControllerMotion, hsv_to_rgb, MultiSelection, ResponseType};
 use gtk4::gdk::RGBA;
-use log::{debug, error, trace, warn};
+use log::{debug, error, warn};
 use plotters::coord::ReverseCoordTranslate;
 use plotters::prelude::*;
 use plotters_cairo::CairoBackend;
@@ -16,10 +11,13 @@ use relm4::binding::{Binding, BoolBinding, F32Binding};
 use relm4::prelude::*;
 use relm4::prelude::gtk::prelude::*;
 use relm4::typed_view::column::TypedColumnView;
+
 use crate::ui::graph::color_binding::RGBABinding;
 use crate::ui::graph::element::GraphElement;
-
 use crate::ui::swr_worker::Sample;
+
+mod element;
+mod color_binding;
 
 pub struct Graph {
     x_min: f32,
@@ -93,8 +91,8 @@ impl Component for Graph {
             set_transient_for: Some(&window),
             #[watch]
             set_rgba?: &model.last_color,
-            connect_color_activated[sender] => move |c, color| {
-                sender.input(Input::SetColor(Some(color.clone())))
+            connect_color_activated[sender] => move |_, color| {
+                sender.input(Input::SetColor(Some(*color)))
             },
             connect_response[sender] => move |c, r| {
                 debug!("Color picker response for index: {:?}", r);
@@ -104,7 +102,7 @@ impl Component for Graph {
                 }
                 let color = c.rgba();
                 
-                sender.input(Input::SetColor(Some(color.clone())))
+                sender.input(Input::SetColor(Some(color)))
             },
         }
     }
@@ -177,10 +175,16 @@ impl Component for Graph {
             Input::Delete(index) => {
                 self.elements.remove(index);
                 if let Some(prev) = self.active.take() {
-                    if prev > index {
-                        self.active = Some(prev - 1);
-                    } else if prev < index {
-                        self.active = Some(prev);
+                    match prev.cmp(&index) {
+                        Ordering::Less => {
+                            self.active = Some(prev);
+                        }
+                        Ordering::Equal => {
+                            self.active = None;
+                        }
+                        Ordering::Greater => {
+                            self.active = Some(prev - 1);
+                        }
                     }
                 }
             }
@@ -244,7 +248,7 @@ impl Graph {
             if !elem.visible.get() { continue; }
 
             let color = elem.color.get();
-            
+
             chart
                 .draw_series(LineSeries::new(
                     elem.samples.iter().copied(),
@@ -255,13 +259,13 @@ impl Graph {
                     ),
                 )).unwrap()
                 .label("main")
-                .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], &RED));
+                .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], RED));
         }
 
         if let Some(point) = self.pointer
             .and_then(|(x, y)| chart.as_coord_spec().reverse_translate((x as i32, y as i32)))
             .and_then(|p| self.get_closest(p)) {
-            chart.plotting_area().draw(&Cross::new(point, 10, &BLACK)).unwrap();
+            chart.plotting_area().draw(&Cross::new(point, 10, BLACK)).unwrap();
             root.draw_text(
                 &format!("({:.3} MHz, {:.3} dBV)", point.0 / 1000000.0, point.1),
                 &("sans-serif", 10, &BLACK).into_text_style(chart.plotting_area()),
